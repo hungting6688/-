@@ -76,38 +76,80 @@ jobs:
         EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
-        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
-        EMAIL_USE_TLS: ${{ secrets.EMAIL_USE_TLS }}
-        STOCK_DATA_SOURCE: ${{ secrets.STOCK_DATA_SOURCE }}
-        STOCK_API_KEY: ${{ secrets.STOCK_API_KEY }}
+        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
+        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
+        EMAIL_USE_TLS: ${{ secrets.EMAIL_USE_TLS || 'True' }}
+        STOCK_DATA_SOURCE: ${{ secrets.STOCK_DATA_SOURCE || 'twse' }}
+        STOCK_API_KEY: ${{ secrets.STOCK_API_KEY || '' }}
       run: |
+        # 顯示目錄內容以便排除問題 
+        echo "目前工作目錄:"
+        pwd
+        echo "目錄內容:"
+        ls -la
+        echo "Python 版本:"
+        python --version
+        
+        # 複製 run.py (如果不存在)
+        if [ ! -f "run.py" ]; then
+          echo "未找到 run.py，嘗試創建..."
+          echo '"""
+        run.py - 股市機器人啟動腳本
+        提供命令行界面，便於啟動、測試和配置股市機器人
+        """
+        import os
+        import sys
+        import logging
+        import stock_bot
+
+        if __name__ == "__main__":
+            # 設置日誌
+            logging.basicConfig(level=logging.INFO)
+            logging.info("使用簡化版 run.py 啟動")
+            
+            # 執行分析
+            if len(sys.argv) > 1:
+                try:
+                    stock_bot.run_analysis(sys.argv[1])
+                    logging.info(f"完成 {sys.argv[1]} 分析")
+                except Exception as e:
+                    logging.error(f"運行錯誤: {e}")
+            else:
+                logging.info("啟動機器人")
+                stock_bot.main()
+        ' > run.py
+        fi
+        
         # 根據觸發方式決定運行命令
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           if [ "${{ github.event.inputs.run_type }}" = "full" ]; then
-            python run.py start
+            python stock_bot.py  # 直接啟動主程序
           elif [ "${{ github.event.inputs.run_type }}" = "test" ]; then
             python test_notification.py
           else
-            python run.py analyze ${{ github.event.inputs.run_type }}
+            python run.py ${{ github.event.inputs.run_type }}
           fi
         else
           # 根據排程時間決定運行類型
           HOUR=$(date +%H)
           MINUTE=$(date +%M)
           
+          echo "目前時間: ${HOUR}:${MINUTE}"
+          
           if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "10" ]; then
-            python run.py analyze morning_scan
+            python run.py morning_scan
           elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "30" ] && [ "$MINUTE" -lt "40" ]; then
-            python run.py analyze mid_morning_scan
+            python run.py mid_morning_scan
           elif [ "$HOUR" = "04" ] && [ "$MINUTE" -ge "30" ] && [ "$MINUTE" -lt "40" ]; then
-            python run.py analyze mid_day_scan
+            python run.py mid_day_scan
           elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "10" ]; then
-            python run.py analyze afternoon_scan
+            python run.py afternoon_scan
           elif [ "$HOUR" = "09" ] && [ "$MINUTE" -lt "10" ]; then
-            python run.py analyze weekly_summary
+            python run.py weekly_summary
           else
-            python run.py status
+            # 默認行為 - 進行一次測試
+            echo "未匹配到指定時間，執行測試通知"
+            python test_notification.py --test simple
           fi
         fi
         
@@ -116,5 +158,8 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: stock-bot-logs
-        path: logs/
+        path: |
+          logs/
+          *.log
+        if-no-files-found: warn
         retention-days: 7
