@@ -1,6 +1,6 @@
 """
-stock_analyzer_integrator.py - 整合進階分析模組
-將進階股票分析功能整合到主程序
+stock_analyzer_integrator.py - 股票分析整合器模組
+將各種分析方法整合到一個統一的接口
 """
 import os
 import json
