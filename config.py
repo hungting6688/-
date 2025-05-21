@@ -59,6 +59,34 @@ STOCK_ANALYSIS = {
     'volume_change_threshold': 100.0,  # 成交量變動閾值(百分比)
     'short_term_days': 5,  # 短線考慮天數
     'long_term_days': 30,  # 長線考慮天數
+    'scan_limits': {  # 不同時段掃描的股票數量
+        'morning_scan': 100,       # 9:00掃描股票數量
+        'mid_morning_scan': 150,   # 10:30掃描股票數量
+        'mid_day_scan': 150,       # 12:30掃描股票數量
+        'afternoon_scan': 450,     # 15:00掃描股票數量
+    },
+    'recommendation_limits': {  # 不同時段推薦的股票數量
+        'morning_scan': {           # 9:00
+            'long_term': 2,
+            'short_term': 3,
+            'weak_stocks': 2
+        },
+        'mid_morning_scan': {       # 10:30
+            'long_term': 3,
+            'short_term': 2,
+            'weak_stocks': 0
+        },
+        'mid_day_scan': {           # 12:30
+            'long_term': 3,
+            'short_term': 2,
+            'weak_stocks': 0
+        },
+        'afternoon_scan': {         # 15:00
+            'long_term': 3,
+            'short_term': 3,
+            'weak_stocks': 0
+        }
+    }
 }
 
 # 股市交易時間
@@ -73,11 +101,12 @@ MARKET_HOURS = {
 
 # 分析與通知時間
 NOTIFICATION_SCHEDULE = {
-    'pre_market': '08:45',  # 盤前分析
-    'mid_day': '12:15',     # 午間分析
-    'post_market': '14:45', # 盤後分析
+    'morning_scan': '09:00',       # 早盤掃描
+    'mid_morning_scan': '10:30',   # 盤中掃描
+    'mid_day_scan': '12:30',       # 午間掃描
+    'afternoon_scan': '15:00',     # 盤後掃描
     'weekly_summary': 'Friday 17:00',  # 週末總結
-    'heartbeat': '09:00',   # 心跳檢測
+    'heartbeat': '08:30',   # 心跳檢測
 }
 
 # 日誌配置
