@@ -3,10 +3,17 @@ config.py - 股市機器人的配置文件
 包含所有應用程序的設置和參數
 """
 import os
+import sys
 from dotenv import load_dotenv
 
-# 加載.env文件中的環境變量
-load_dotenv()
+# 首先嘗試從.env文件加載環境變量（若存在）
+# 但如果變量已經在系統環境中存在，則優先使用系統環境中的變量（如GitHub Secrets）
+dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+if os.path.exists(dotenv_path):
+    load_dotenv(dotenv_path)
+    print(f"已從 {dotenv_path} 加載環境變量配置")
+else:
+    print("未找到.env文件，將使用系統環境變量")
 
 # 日誌和緩存目錄
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
