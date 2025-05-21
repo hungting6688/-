@@ -536,15 +536,34 @@ def send_combined_recommendations(strategies_data, time_slot):
     
     # 生成通知消息
     today = datetime.now().strftime("%Y/%m/%d")
-    message = f"📈 {today} {time_slot}分析報告\n\n"
+    
+    # 嘗試使用白話文生成介紹
+    try:
+        import text_formatter
+        intro_text = text_formatter.generate_intro_text(time_slot.lower().replace(' ', '_'))
+        message = f"📈 {today} {time_slot}分析報告\n\n{intro_text}\n\n"
+    except ImportError:
+        message = f"📈 {today} {time_slot}分析報告\n\n"
     
     # 短線推薦部分
     message += "【短線推薦】\n\n"
     if short_term_stocks:
         for stock in short_term_stocks:
             message += f"📈 {stock['code']} {stock['name']}\n"
-            message += f"推薦理由: {stock['reason']}\n"
-            message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
+            
+            # 嘗試使用白話文生成建議
+            try:
+                import text_formatter
+                if 'analysis' in stock:  # 如果有完整分析資料
+                    plain_text = text_formatter.generate_plain_text(stock['analysis'], "short_term")
+                    message += f"{plain_text['description']}\n"
+                    message += f"📍 {plain_text['suggestion']}\n\n"
+                else:
+                    message += f"推薦理由: {stock['reason']}\n"
+                    message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
+            except ImportError:
+                message += f"推薦理由: {stock['reason']}\n"
+                message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
     else:
         message += "今日無短線推薦股票\n\n"
     
@@ -553,8 +572,20 @@ def send_combined_recommendations(strategies_data, time_slot):
     if long_term_stocks:
         for stock in long_term_stocks:
             message += f"📊 {stock['code']} {stock['name']}\n"
-            message += f"推薦理由: {stock['reason']}\n"
-            message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
+            
+            # 嘗試使用白話文生成建議
+            try:
+                import text_formatter
+                if 'analysis' in stock:  # 如果有完整分析資料
+                    plain_text = text_formatter.generate_plain_text(stock['analysis'], "long_term")
+                    message += f"{plain_text['description']}\n"
+                    message += f"📍 {plain_text['suggestion']}\n\n"
+                else:
+                    message += f"推薦理由: {stock['reason']}\n"
+                    message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
+            except ImportError:
+                message += f"推薦理由: {stock['reason']}\n"
+                message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
     else:
         message += "今日無長線推薦股票\n\n"
     
@@ -563,8 +594,20 @@ def send_combined_recommendations(strategies_data, time_slot):
     if weak_stocks:
         for stock in weak_stocks:
             message += f"⚠️ {stock['code']} {stock['name']}\n"
-            message += f"當前價格: {stock['current_price']}\n"
-            message += f"警報原因: {stock['alert_reason']}\n\n"
+            
+            # 嘗試使用白話文生成建議
+            try:
+                import text_formatter
+                if 'analysis' in stock:  # 如果有完整分析資料
+                    plain_text = text_formatter.generate_plain_text(stock['analysis'], "weak_stock")
+                    message += f"{plain_text['description']}\n"
+                    message += f"📍 {plain_text['suggestion']}\n\n"
+                else:
+                    message += f"當前價格: {stock['current_price']}\n"
+                    message += f"警報原因: {stock['alert_reason']}\n\n"
+            except ImportError:
+                message += f"當前價格: {stock['current_price']}\n"
+                message += f"警報原因: {stock['alert_reason']}\n\n"
     else:
         message += "今日無極弱股警示\n\n"
     
@@ -576,12 +619,15 @@ def send_combined_recommendations(strategies_data, time_slot):
         <style>
             body { font-family: Arial, sans-serif; line-height: 1.6; }
             .header { color: #0066cc; font-size: 20px; font-weight: bold; margin-bottom: 20px; }
+            .intro { margin-bottom: 20px; background-color: #f8f9fa; padding: 15px; border-radius: 5px; }
             .section { margin-bottom: 30px; }
             .section-title { color: #333; font-size: 18px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
             .stock { margin-bottom: 20px; border-left: 4px solid #0066cc; padding-left: 15px; }
             .stock.long-term { border-left-color: #009900; }
             .stock.weak { border-left-color: #cc0000; }
             .stock-name { font-weight: bold; font-size: 16px; }
+            .stock-description { margin: 10px 0; color: #333; }
+            .suggestion { margin: 10px 0; color: #0066cc; font-weight: bold; }
             .label { color: #666; }
             .price { color: #009900; font-weight: bold; }
             .stop-loss { color: #cc0000; font-weight: bold; }
@@ -594,6 +640,14 @@ def send_combined_recommendations(strategies_data, time_slot):
         <div class="header">""" + f"📈 {today} {time_slot}分析報告" + """</div>
     """)
     
+    # 添加介紹段落
+    try:
+        import text_formatter
+        intro_text = text_formatter.generate_intro_text(time_slot.lower().replace(' ', '_'))
+        html_parts.append(f"""<div class="intro">{intro_text.replace(chr(10), '<br>')}</div>""")
+    except ImportError:
+        pass
+    
     # 短線推薦 HTML
     html_parts.append("""
         <div class="section">
@@ -602,15 +656,28 @@ def send_combined_recommendations(strategies_data, time_slot):
     
     if short_term_stocks:
         for stock in short_term_stocks:
-            stock_html = """
+            html_parts.append(f"""
             <div class="stock">
-                <div class="stock-name">📈 """ + stock['code'] + " " + stock['name'] + """</div>
-                <div><span class="label">推薦理由:</span> <span class="reason">""" + stock['reason'] + """</span></div>
-                <div><span class="label">目標價:</span> <span class="price">""" + str(stock['target_price']) + """</span> | <span class="label">止損價:</span> <span class="stop-loss">""" + str(stock['stop_loss']) + """</span></div>
-                <div><span class="label">當前價格:</span> <span class="current-price">""" + str(stock.get('current_price', '無資料')) + """</span></div>
-            </div>
-            """
-            html_parts.append(stock_html)
+                <div class="stock-name">📈 {stock['code']} {stock['name']}</div>
+            """)
+            
+            # 嘗試使用白話文生成建議
+            try:
+                import text_formatter
+                if 'analysis' in stock:  # 如果有完整分析資料
+                    plain_text = text_formatter.generate_plain_text(stock['analysis'], "short_term")
+                    html_parts.append(f"""<div class="stock-description">{plain_text['description']}</div>""")
+                    html_parts.append(f"""<div class="suggestion">📍 {plain_text['suggestion']}</div>""")
+                else:
+                    html_parts.append(f"""<div><span class="label">推薦理由:</span> <span class="reason">{stock['reason']}</span></div>""")
+                    html_parts.append(f"""<div><span class="label">目標價:</span> <span class="price">{stock['target_price']}</span> | <span class="label">止損價:</span> <span class="stop-loss">{stock['stop_loss']}</span></div>""")
+                    html_parts.append(f"""<div><span class="label">當前價格:</span> <span class="current-price">{stock.get('current_price', '無資料')}</span></div>""")
+            except ImportError:
+                html_parts.append(f"""<div><span class="label">推薦理由:</span> <span class="reason">{stock['reason']}</span></div>""")
+                html_parts.append(f"""<div><span class="label">目標價:</span> <span class="price">{stock['target_price']}</span> | <span class="label">止損價:</span> <span class="stop-loss">{stock['stop_loss']}</span></div>""")
+                html_parts.append(f"""<div><span class="label">當前價格:</span> <span class="current-price">{stock.get('current_price', '無資料')}</span></div>""")
+            
+            html_parts.append("""</div>""")  # 關閉單支股票區塊
     else:
         html_parts.append("""<div>今日無短線推薦股票</div>""")
     
@@ -624,15 +691,28 @@ def send_combined_recommendations(strategies_data, time_slot):
     
     if long_term_stocks:
         for stock in long_term_stocks:
-            stock_html = """
+            html_parts.append(f"""
             <div class="stock long-term">
-                <div class="stock-name">📊 """ + stock['code'] + " " + stock['name'] + """</div>
-                <div><span class="label">推薦理由:</span> <span class="reason">""" + stock['reason'] + """</span></div>
-                <div><span class="label">目標價:</span> <span class="price">""" + str(stock['target_price']) + """</span> | <span class="label">止損價:</span> <span class="stop-loss">""" + str(stock['stop_loss']) + """</span></div>
-                <div><span class="label">當前價格:</span> <span class="current-price">""" + str(stock.get('current_price', '無資料')) + """</span></div>
-            </div>
-            """
-            html_parts.append(stock_html)
+                <div class="stock-name">📊 {stock['code']} {stock['name']}</div>
+            """)
+            
+            # 嘗試使用白話文生成建議
+            try:
+                import text_formatter
+                if 'analysis' in stock:  # 如果有完整分析資料
+                    plain_text = text_formatter.generate_plain_text(stock['analysis'], "long_term")
+                    html_parts.append(f"""<div class="stock-description">{plain_text['description']}</div>""")
+                    html_parts.append(f"""<div class="suggestion">📍 {plain_text['suggestion']}</div>""")
+                else:
+                    html_parts.append(f"""<div><span class="label">推薦理由:</span> <span class="reason">{stock['reason']}</span></div>""")
+                    html_parts.append(f"""<div><span class="label">目標價:</span> <span class="price">{stock['target_price']}</span> | <span class="label">止損價:</span> <span class="stop-loss">{stock['stop_loss']}</span></div>""")
+                    html_parts.append(f"""<div><span class="label">當前價格:</span> <span class="current-price">{stock.get('current_price', '無資料')}</span></div>""")
+            except ImportError:
+                html_parts.append(f"""<div><span class="label">推薦理由:</span> <span class="reason">{stock['reason']}</span></div>""")
+                html_parts.append(f"""<div><span class="label">目標價:</span> <span class="price">{stock['target_price']}</span> | <span class="label">止損價:</span> <span class="stop-loss">{stock['stop_loss']}</span></div>""")
+                html_parts.append(f"""<div><span class="label">當前價格:</span> <span class="current-price">{stock.get('current_price', '無資料')}</span></div>""")
+            
+            html_parts.append("""</div>""")  # 關閉單支股票區塊
     else:
         html_parts.append("""<div>今日無長線推薦股票</div>""")
     
@@ -646,14 +726,26 @@ def send_combined_recommendations(strategies_data, time_slot):
     
     if weak_stocks:
         for stock in weak_stocks:
-            stock_html = """
+            html_parts.append(f"""
             <div class="stock weak">
-                <div class="stock-name">⚠️ """ + stock['code'] + " " + stock['name'] + """</div>
-                <div><span class="label">當前價格:</span> <span class="current-price">""" + str(stock['current_price']) + """</span></div>
-                <div><span class="label">警報原因:</span> <span class="reason">""" + stock['alert_reason'] + """</span></div>
-            </div>
-            """
-            html_parts.append(stock_html)
+                <div class="stock-name">⚠️ {stock['code']} {stock['name']}</div>
+            """)
+            
+            # 嘗試使用白話文生成建議
+            try:
+                import text_formatter
+                if 'analysis' in stock:  # 如果有完整分析資料
+                    plain_text = text_formatter.generate_plain_text(stock['analysis'], "weak_stock")
+                    html_parts.append(f"""<div class="stock-description">{plain_text['description']}</div>""")
+                    html_parts.append(f"""<div class="suggestion">📍 {plain_text['suggestion']}</div>""")
+                else:
+                    html_parts.append(f"""<div><span class="label">當前價格:</span> <span class="current-price">{stock['current_price']}</span></div>""")
+                    html_parts.append(f"""<div><span class="label">警報原因:</span> <span class="reason">{stock['alert_reason']}</span></div>""")
+            except ImportError:
+                html_parts.append(f"""<div><span class="label">當前價格:</span> <span class="current-price">{stock['current_price']}</span></div>""")
+                html_parts.append(f"""<div><span class="label">警報原因:</span> <span class="reason">{stock['alert_reason']}</span></div>""")
+            
+            html_parts.append("""</div>""")  # 關閉單支股票區塊
     else:
         html_parts.append("""<div>今日無極弱股警示</div>""")
     
