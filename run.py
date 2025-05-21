@@ -136,9 +136,10 @@ def check_status():
     
     # 排程狀態
     print("\n排程狀態:")
-    print(f"盤前分析: 每個工作日 {NOTIFICATION_SCHEDULE['pre_market']}")
-    print(f"午間分析: 每個工作日 {NOTIFICATION_SCHEDULE['mid_day']}")
-    print(f"盤後分析: 每個工作日 {NOTIFICATION_SCHEDULE['post_market']}")
+    print(f"早盤掃描: 每個工作日 {NOTIFICATION_SCHEDULE['morning_scan']}")
+    print(f"盤中掃描: 每個工作日 {NOTIFICATION_SCHEDULE['mid_morning_scan']}")
+    print(f"午間掃描: 每個工作日 {NOTIFICATION_SCHEDULE['mid_day_scan']}")
+    print(f"盤後掃描: 每個工作日 {NOTIFICATION_SCHEDULE['afternoon_scan']}")
     print(f"週末總結: 每週五 {NOTIFICATION_SCHEDULE['weekly_summary']}")
     
     # 通知狀態
@@ -175,7 +176,7 @@ def main():
     
     # 分析命令
     analyze_parser = subparsers.add_parser('analyze', help='執行特定時段的分析')
-    analyze_parser.add_argument('time_slot', choices=['pre_market', 'mid_day', 'post_market', 'weekly_summary'], 
+    analyze_parser.add_argument('time_slot', choices=['morning_scan', 'mid_morning_scan', 'mid_day_scan', 'afternoon_scan', 'weekly_summary'], 
                               help='分析時段')
     
     # 測試命令
