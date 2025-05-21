@@ -79,6 +79,11 @@ def log_event(message, level='info'):
     else:
         logging.info(message)
         print(f"ℹ️ {message}")
+    
+    # 在GitHub Actions環境中，添加專用輸出格式以便更好地在日誌中識別
+    if 'GITHUB_ACTIONS' in os.environ:
+        prefix = "::error::" if level == 'error' else "::warning::" if level == 'warning' else "::notice::"
+        print(f"{prefix}{message}")
 
 def send_notification(message, subject='系統通知', html_body=None, urgent=False):
     """
