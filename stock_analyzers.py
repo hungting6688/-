@@ -106,7 +106,7 @@ class AdvancedStockAnalyzer:
         stocks = []
         
         try:
-            # 嘗試從財務部證券交易所獲取股票列表
+            # 嘗試從證券交易所獲取股票列表
             if market_type == 'TSE':
                 url = "https://www.twse.com.tw/exchangeReport/STOCK_DAY_ALL?response=json"
             else:  # OTC
