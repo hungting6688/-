@@ -1,5 +1,5 @@
 """
-text_formatter.py - 白話文轉換模塊
+text_formatter.py - 白話文轉換模組
 將技術分析結果轉換為易於理解的白話文描述
 """
 import random
@@ -216,35 +216,35 @@ TEMPLATES = {
     
     # 引言模板
     "introduction": {
-        "morning": [
+        "morning_scan": [
             "早盤掃描完成，已為您篩選出今日最值得關注的股票：",
             "根據今日早盤數據分析，以下是我們精選的投資機會：",
             "經過晨間市場數據分析，以下股票展現較高投資價值：",
             "今日開盤前分析已完成，以下是最具潛力的投資標的：",
             "早安！今天市場開盤前，這些股票值得您特別關注："
         ],
-        "mid_morning": [
+        "mid_morning_scan": [
             "盤中最新掃描結果出爐，這些股票走勢值得關注：",
             "根據盤中即時數據，以下股票展現不錯的交易機會：",
             "盤中掃描顯示，這些股票的技術指標正在轉強：",
             "市場盤中表現分析完成，以下標的值得進一步觀察：",
             "盤中分析更新，這些股票的走勢開始出現轉機："
         ],
-        "mid_day": [
+        "mid_day_scan": [
             "午間分析結果已更新，以下是值得下午持續關注的標的：",
             "根據上午的交易情況，這些股票在下午可能有不錯表現：",
             "午間市場更新，以下股票展現出較佳的投資機會：",
             "中午好！根據上半日交易數據，這些股票趨勢較為明確：",
             "午間掃描完成，下午可重點觀察以下幾檔股票："
         ],
-        "afternoon": [
+        "afternoon_scan": [
             "今日收盤分析結果出爐，以下是綜合表現最佳的股票：",
             "根據全天交易數據，這些股票技術面有明顯轉變：",
             "今日大盤收盤後分析，以下標的的走勢最為明確：",
             "完整的日盤分析顯示，這些股票值得納入觀察名單：",
             "今日收盤後的綜合評估，以下股票脫穎而出："
         ],
-        "weekly": [
+        "weekly_summary": [
             "本週市場總結分析，以下是未來一週最值得關注的投資機會：",
             "週末市場掃描顯示，下週這些股票可能有較大表現空間：",
             "根據本週交易數據綜合分析，以下股票展現出較佳趨勢：",
@@ -424,27 +424,27 @@ def generate_plain_text(analysis: Dict[str, Any], category: str) -> Dict[str, st
 
 def generate_intro_text(time_slot: str, market_trend: str = "neutral") -> str:
     """
-    生成通知的介紹文字
+    生成通知的引言文字
     
     參數:
     - time_slot: 時段 (morning_scan, mid_morning_scan, mid_day_scan, afternoon_scan, weekly_summary)
     - market_trend: 大盤趨勢 (bullish, bearish, neutral)
     
     返回:
-    - 介紹文字
+    - 引言文字
     """
     # 映射時段到模板類別
     slot_map = {
-        "morning_scan": "morning",
-        "mid_morning_scan": "mid_morning",
-        "mid_day_scan": "mid_day",
-        "afternoon_scan": "afternoon",
-        "weekly_summary": "weekly"
+        "morning_scan": "morning_scan",
+        "mid_morning_scan": "mid_morning_scan",
+        "mid_day_scan": "mid_day_scan",
+        "afternoon_scan": "afternoon_scan",
+        "weekly_summary": "weekly_summary"
     }
     
-    template_key = slot_map.get(time_slot, "morning")
+    template_key = slot_map.get(time_slot, "morning_scan")
     
-    # 選擇介紹模板
+    # 選擇引言模板
     intro = random.choice(TEMPLATES["introduction"][template_key])
     
     # 選擇市場環境描述
@@ -485,7 +485,7 @@ if __name__ == "__main__":
     print(long_term["suggestion"])
     print()
     
-    # 測試介紹文字
+    # 測試引言文字
     intro = generate_intro_text("morning_scan", "bullish")
-    print("介紹文字:")
+    print("引言文字:")
     print(intro)
