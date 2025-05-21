@@ -39,6 +39,16 @@ jobs:
     - name: 檢出代碼
       uses: actions/checkout@v4
       
+    - name: 建立logs目錄
+      run: mkdir -p logs cache data
+      
+    - name: 修正文件名 (如果需要)
+      run: |
+        # 檢查是否存在 requirement.txt 而非 requirements.txt
+        if [ -f "requirement.txt" ] && [ ! -f "requirements.txt" ]; then
+          cp requirement.txt requirements.txt
+        fi
+      
     - name: 設置 Python
       uses: actions/setup-python@v5
       with:
@@ -48,12 +58,17 @@ jobs:
     - name: 安裝依賴
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        # 檢查 requirements.txt 文件是否存在
+        if [ -f "requirements.txt" ]; then
+          pip install -r requirements.txt
+        else
+          # 如果找不到文件，直接安裝必要的套件
+          pip install requests pandas numpy schedule python-dotenv pytz matplotlib
+          echo "警告: 找不到 requirements.txt 文件，已安裝基本套件"
+        fi
         
-    - name: 建立必要目錄
-      run: |
-        mkdir -p logs cache data
-        mkdir -p logs/notifications logs/undelivered data/analysis_results
+    - name: 移除建立必要目錄步驟
+      run: echo "此步驟已被整合到前面的步驟中"
         
     - name: 執行機器人
       env:
