@@ -44,7 +44,14 @@ def check_environment():
         from config import EMAIL_CONFIG
         if EMAIL_CONFIG['enabled']:
             if not all([EMAIL_CONFIG['sender'], EMAIL_CONFIG['password'], EMAIL_CONFIG['receiver']]):
-                print("⚠️ 警告: 電子郵件設定不完整，請檢查.env文件")
+                # 檢查是否在GitHub Actions或CI環境中運行
+                if 'GITHUB_ACTIONS' in os.environ or 'CI' in os.environ:
+                    print("⚠️ 警告: 在CI環境中檢測到電子郵件設定不完整，請檢查GitHub Secrets是否正確配置")
+                    print(f"目前環境變數: EMAIL_SENDER={'已設置' if os.getenv('EMAIL_SENDER') else '未設置'}")
+                    print(f"             EMAIL_RECEIVER={'已設置' if os.getenv('EMAIL_RECEIVER') else '未設置'}")
+                    print(f"             EMAIL_PASSWORD={'已設置' if os.getenv('EMAIL_PASSWORD') else '未設置'}")
+                else:
+                    print("⚠️ 警告: 電子郵件設定不完整，請檢查.env文件")
                 return False
         
         # 檢查目錄結構
@@ -52,6 +59,11 @@ def check_environment():
         for directory in [LOG_DIR, CACHE_DIR, DATA_DIR]:
             if not os.path.exists(directory):
                 os.makedirs(directory, exist_ok=True)
+                print(f"已創建目錄: {directory}")
+        
+        # 檢查是否在CI環境中運行
+        if 'GITHUB_ACTIONS' in os.environ or 'CI' in os.environ:
+            print("檢測到CI環境，正在使用GitHub Secrets作為配置來源")
         
         return True
         
