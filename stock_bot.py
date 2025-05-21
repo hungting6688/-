@@ -390,18 +390,27 @@ def analyze_stock(stock_data: pd.DataFrame) -> Dict[str, Any]:
     
     return result
 
-def generate_stock_recommendations(all_analyses: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+def generate_stock_recommendations(all_analyses: List[Dict[str, Any]], rec_limits: Dict[str, int] = None) -> Dict[str, List[Dict[str, Any]]]:
     """
     從多只股票的分析中生成推薦
     
     參數:
     - all_analyses: 所有股票分析的列表
+    - rec_limits: 各類別推薦數量限制
     
     返回:
     - 按類別分組的股票推薦
     """
     if not all_analyses:
         return {"short_term": [], "long_term": [], "weak_stocks": []}
+    
+    # 如果沒有指定限制，使用默認值
+    if rec_limits is None:
+        rec_limits = {
+            'long_term': 3,
+            'short_term': 3,
+            'weak_stocks': 2
+        }
     
     # 加載股票名稱對應
     stock_names = {stock["code"]: stock["name"] for stock in load_stock_list()}
@@ -446,11 +455,19 @@ def generate_stock_recommendations(all_analyses: List[Dict[str, Any]]) -> Dict[s
                 "alert_reason": alert_reason
             })
     
-    # 按得分或其他指標排序，並限制每類的數量
-    max_stocks = STOCK_ANALYSIS['max_stocks_per_category']
-    short_term = sorted(short_term, key=lambda x: -float(x.get("current_price", 0)))[:max_stocks]
-    long_term = sorted(long_term, key=lambda x: -float(x.get("current_price", 0)))[:max_stocks]
-    weak_stocks = sorted(weak_stocks, key=lambda x: float(x.get("current_price", 0)))[:max_stocks]
+    # 按得分排序
+    short_term = sorted(short_term, key=lambda x: -float(getattr(x, "weighted_score", 0) if hasattr(x, "weighted_score") else 0))
+    long_term = sorted(long_term, key=lambda x: -float(getattr(x, "weighted_score", 0) if hasattr(x, "weighted_score") else 0))
+    weak_stocks = sorted(weak_stocks, key=lambda x: float(getattr(x, "weighted_score", 0) if hasattr(x, "weighted_score") else 0))
+    
+    # 按推薦限制截取
+    short_term_limit = rec_limits.get('short_term', 3)
+    long_term_limit = rec_limits.get('long_term', 3)
+    weak_stocks_limit = rec_limits.get('weak_stocks', 2)
+    
+    short_term = short_term[:short_term_limit]
+    long_term = long_term[:long_term_limit]
+    weak_stocks = weak_stocks[:weak_stocks_limit]
     
     return {
         "short_term": short_term,
@@ -546,7 +563,7 @@ def run_analysis(time_slot: str) -> None:
     執行股市分析並發送通知
     
     參數:
-    - time_slot: 時段名稱 ('pre_market', 'mid_day', 'post_market', 'weekly_summary')
+    - time_slot: 時段名稱 ('morning_scan', 'mid_morning_scan', 'mid_day_scan', 'afternoon_scan', 'weekly_summary')
     """
     log_event(f"開始執行 {time_slot} 分析")
     
@@ -562,8 +579,20 @@ def run_analysis(time_slot: str) -> None:
                 return
         
         # 加載股票列表
-        stocks = load_stock_list()
-        log_event(f"已加載 {len(stocks)} 支股票")
+        all_stocks = load_stock_list()
+        log_event(f"已加載 {len(all_stocks)} 支股票")
+        
+        # 確定掃描股票數量
+        scan_limit = STOCK_ANALYSIS['scan_limits'].get(time_slot, 100)
+        stocks = all_stocks[:scan_limit]  # 取前N支股票
+        log_event(f"將掃描 {len(stocks)} 支股票（時段：{time_slot}）")
+        
+        # 確定推薦數量限制
+        rec_limits = STOCK_ANALYSIS['recommendation_limits'].get(time_slot, {
+            'long_term': 3,
+            'short_term': 3,
+            'weak_stocks': 0
+        })
         
         # 分析結果列表
         all_analyses = []
@@ -605,17 +634,19 @@ def run_analysis(time_slot: str) -> None:
                 continue
         
         # 生成推薦
-        recommendations = generate_stock_recommendations(all_analyses)
+        recommendations = generate_stock_recommendations(all_analyses, rec_limits)
         
         # 根據時段發送不同的通知
-        if time_slot == 'pre_market':
-            notifier.send_combined_recommendations(recommendations, "盤前")
-        elif time_slot == 'mid_day':
-            notifier.send_combined_recommendations(recommendations, "午間")
-        elif time_slot == 'post_market':
-            notifier.send_combined_recommendations(recommendations, "盤後")
-        elif time_slot == 'weekly_summary':
-            notifier.send_combined_recommendations(recommendations, "週末總結")
+        time_slot_names = {
+            'morning_scan': "早盤掃描",
+            'mid_morning_scan': "盤中掃描",
+            'mid_day_scan': "午間掃描",
+            'afternoon_scan': "盤後掃描",
+            'weekly_summary': "週末總結"
+        }
+        
+        display_name = time_slot_names.get(time_slot, time_slot)
+        notifier.send_combined_recommendations(recommendations, display_name)
         
         # 保存分析結果
         save_analysis_results(all_analyses, recommendations, time_slot)
@@ -650,26 +681,33 @@ def save_analysis_results(analyses: List[Dict[str, Any]], recommendations: Dict[
 
 def setup_schedule() -> None:
     """設置排程任務"""
-    # 盤前分析
-    schedule.every().monday.at(NOTIFICATION_SCHEDULE['pre_market']).do(run_analysis, 'pre_market')
-    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['pre_market']).do(run_analysis, 'pre_market')
-    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['pre_market']).do(run_analysis, 'pre_market')
-    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['pre_market']).do(run_analysis, 'pre_market')
-    schedule.every().friday.at(NOTIFICATION_SCHEDULE['pre_market']).do(run_analysis, 'pre_market')
+    # 早盤掃描 (9:00)
+    schedule.every().monday.at(NOTIFICATION_SCHEDULE['morning_scan']).do(run_analysis, 'morning_scan')
+    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['morning_scan']).do(run_analysis, 'morning_scan')
+    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['morning_scan']).do(run_analysis, 'morning_scan')
+    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['morning_scan']).do(run_analysis, 'morning_scan')
+    schedule.every().friday.at(NOTIFICATION_SCHEDULE['morning_scan']).do(run_analysis, 'morning_scan')
     
-    # 午間分析
-    schedule.every().monday.at(NOTIFICATION_SCHEDULE['mid_day']).do(run_analysis, 'mid_day')
-    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['mid_day']).do(run_analysis, 'mid_day')
-    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['mid_day']).do(run_analysis, 'mid_day')
-    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['mid_day']).do(run_analysis, 'mid_day')
-    schedule.every().friday.at(NOTIFICATION_SCHEDULE['mid_day']).do(run_analysis, 'mid_day')
+    # 盤中掃描 (10:30)
+    schedule.every().monday.at(NOTIFICATION_SCHEDULE['mid_morning_scan']).do(run_analysis, 'mid_morning_scan')
+    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['mid_morning_scan']).do(run_analysis, 'mid_morning_scan')
+    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['mid_morning_scan']).do(run_analysis, 'mid_morning_scan')
+    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['mid_morning_scan']).do(run_analysis, 'mid_morning_scan')
+    schedule.every().friday.at(NOTIFICATION_SCHEDULE['mid_morning_scan']).do(run_analysis, 'mid_morning_scan')
     
-    # 盤後分析
-    schedule.every().monday.at(NOTIFICATION_SCHEDULE['post_market']).do(run_analysis, 'post_market')
-    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['post_market']).do(run_analysis, 'post_market')
-    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['post_market']).do(run_analysis, 'post_market')
-    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['post_market']).do(run_analysis, 'post_market')
-    schedule.every().friday.at(NOTIFICATION_SCHEDULE['post_market']).do(run_analysis, 'post_market')
+    # 午間掃描 (12:30)
+    schedule.every().monday.at(NOTIFICATION_SCHEDULE['mid_day_scan']).do(run_analysis, 'mid_day_scan')
+    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['mid_day_scan']).do(run_analysis, 'mid_day_scan')
+    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['mid_day_scan']).do(run_analysis, 'mid_day_scan')
+    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['mid_day_scan']).do(run_analysis, 'mid_day_scan')
+    schedule.every().friday.at(NOTIFICATION_SCHEDULE['mid_day_scan']).do(run_analysis, 'mid_day_scan')
+    
+    # 盤後掃描 (15:00)
+    schedule.every().monday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
+    schedule.every().tuesday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
+    schedule.every().wednesday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
+    schedule.every().thursday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
+    schedule.every().friday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
     
     # 週末總結
     schedule.every().friday.at(NOTIFICATION_SCHEDULE['weekly_summary']).do(run_analysis, 'weekly_summary')
@@ -678,9 +716,10 @@ def setup_schedule() -> None:
     schedule.every().day.at(NOTIFICATION_SCHEDULE['heartbeat']).do(notifier.send_heartbeat)
     
     log_event("排程任務已設置")
-    log_event(f"盤前分析: 每個工作日 {NOTIFICATION_SCHEDULE['pre_market']}")
-    log_event(f"午間分析: 每個工作日 {NOTIFICATION_SCHEDULE['mid_day']}")
-    log_event(f"盤後分析: 每個工作日 {NOTIFICATION_SCHEDULE['post_market']}")
+    log_event(f"早盤掃描: 每個工作日 {NOTIFICATION_SCHEDULE['morning_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['morning_scan']}支股票)")
+    log_event(f"盤中掃描: 每個工作日 {NOTIFICATION_SCHEDULE['mid_morning_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['mid_morning_scan']}支股票)")
+    log_event(f"午間掃描: 每個工作日 {NOTIFICATION_SCHEDULE['mid_day_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['mid_day_scan']}支股票)")
+    log_event(f"盤後掃描: 每個工作日 {NOTIFICATION_SCHEDULE['afternoon_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['afternoon_scan']}支股票)")
     log_event(f"週末總結: 每週五 {NOTIFICATION_SCHEDULE['weekly_summary']}")
     log_event(f"系統心跳: 每天 {NOTIFICATION_SCHEDULE['heartbeat']}")
 
