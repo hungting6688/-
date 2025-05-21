@@ -585,21 +585,44 @@ def run_analysis(time_slot: str) -> None:
                 log_event("通知系統不可用，分析將執行但不發送通知", level='error')
                 return
         
+        # 嘗試導入分析整合器
+        try:
+            from stock_analyzer_integrator import StockAnalyzerIntegrator
+            integrator = StockAnalyzerIntegrator()
+            using_advanced_analysis = True
+            log_event("已啟用進階分析功能")
+        except ImportError:
+            using_advanced_analysis = False
+            log_event("使用標準分析功能 (未找到進階分析模組)", level='warning')
+        
         # 加載股票列表
-        all_stocks = load_stock_list()
-        log_event(f"已加載 {len(all_stocks)} 支股票")
-        
-        # 確定掃描股票數量
-        scan_limit = STOCK_ANALYSIS['scan_limits'].get(time_slot, 100)
-        stocks = all_stocks[:scan_limit]  # 取前N支股票
-        log_event(f"將掃描 {len(stocks)} 支股票（時段：{time_slot}）")
-        
-        # 確定推薦數量限制
-        rec_limits = STOCK_ANALYSIS['recommendation_limits'].get(time_slot, {
-            'long_term': 3,
-            'short_term': 3,
-            'weak_stocks': 0
-        })
+        if using_advanced_analysis:
+            # 使用整合器獲取更完整的股票列表
+            all_stocks = integrator.fetch_taiwan_stocks()
+            log_event(f"已加載 {len(all_stocks)} 支股票")
+            
+            # 根據時段選擇要分析的股票
+            stocks = integrator.get_stock_list_for_time_slot(time_slot, all_stocks)
+            log_event(f"將掃描 {len(stocks)} 支股票（時段：{time_slot}）")
+            
+            # 獲取推薦數量限制
+            rec_limits = integrator.get_recommendation_limits(time_slot)
+        else:
+            # 使用原始方法加載股票列表
+            all_stocks = load_stock_list()
+            log_event(f"已加載 {len(all_stocks)} 支股票")
+            
+            # 確定掃描股票數量
+            scan_limit = STOCK_ANALYSIS['scan_limits'].get(time_slot, 100)
+            stocks = all_stocks[:scan_limit]  # 取前N支股票
+            log_event(f"將掃描 {len(stocks)} 支股票（時段：{time_slot}）")
+            
+            # 確定推薦數量限制
+            rec_limits = STOCK_ANALYSIS['recommendation_limits'].get(time_slot, {
+                'long_term': 3,
+                'short_term': 3,
+                'weak_stocks': 0
+            })
         
         # 分析結果列表
         all_analyses = []
@@ -626,7 +649,20 @@ def run_analysis(time_slot: str) -> None:
                 stock_data_with_indicators = calculate_technical_indicators(stock_data)
                 
                 # 分析股票
-                analysis = analyze_stock(stock_data_with_indicators)
+                if using_advanced_analysis:
+                    # 首先進行基本的技術分析
+                    technical_analysis = analyze_stock(stock_data_with_indicators)
+                    
+                    # 使用整合器增強分析結果
+                    analysis_type = 'short_term' if 'short' in time_slot else 'long_term'
+                    analysis = integrator.enhance_stock_analysis(
+                        stock_data=stock_data_with_indicators,
+                        technical_analysis=technical_analysis,
+                        analysis_type=analysis_type
+                    )
+                else:
+                    # 使用原始的分析方法
+                    analysis = analyze_stock(stock_data_with_indicators)
                 
                 # 添加股票名稱
                 analysis['name'] = stock['name']
@@ -642,6 +678,16 @@ def run_analysis(time_slot: str) -> None:
         
         # 生成推薦
         recommendations = generate_stock_recommendations(all_analyses, rec_limits)
+        
+        # 傳遞完整分析結果給推薦
+        for category in ['short_term', 'long_term', 'weak_stocks']:
+            for stock in recommendations.get(category, []):
+                # 查找對應的完整分析
+                for analysis in all_analyses:
+                    if analysis['code'] == stock['code']:
+                        # 將完整分析數據添加到推薦中
+                        stock['analysis'] = analysis
+                        break
         
         # 根據時段發送不同的通知
         time_slot_names = {
