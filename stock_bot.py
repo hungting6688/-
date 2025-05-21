@@ -709,8 +709,9 @@ def setup_schedule() -> None:
     schedule.every().thursday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
     schedule.every().friday.at(NOTIFICATION_SCHEDULE['afternoon_scan']).do(run_analysis, 'afternoon_scan')
     
-    # 週末總結
-    schedule.every().friday.at(NOTIFICATION_SCHEDULE['weekly_summary']).do(run_analysis, 'weekly_summary')
+    # 週末總結 - 從配置字符串中提取時間部分
+    weekly_summary_time = NOTIFICATION_SCHEDULE['weekly_summary'].split()[-1]  # 提取 '17:00' 部分
+    schedule.every().friday.at(weekly_summary_time).do(run_analysis, 'weekly_summary')
     
     # 心跳檢測
     schedule.every().day.at(NOTIFICATION_SCHEDULE['heartbeat']).do(notifier.send_heartbeat)
@@ -720,7 +721,7 @@ def setup_schedule() -> None:
     log_event(f"盤中掃描: 每個工作日 {NOTIFICATION_SCHEDULE['mid_morning_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['mid_morning_scan']}支股票)")
     log_event(f"午間掃描: 每個工作日 {NOTIFICATION_SCHEDULE['mid_day_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['mid_day_scan']}支股票)")
     log_event(f"盤後掃描: 每個工作日 {NOTIFICATION_SCHEDULE['afternoon_scan']} (掃描{STOCK_ANALYSIS['scan_limits']['afternoon_scan']}支股票)")
-    log_event(f"週末總結: 每週五 {NOTIFICATION_SCHEDULE['weekly_summary']}")
+    log_event(f"週末總結: 每週五 {weekly_summary_time}")
     log_event(f"系統心跳: 每天 {NOTIFICATION_SCHEDULE['heartbeat']}")
 
 def main() -> None:
