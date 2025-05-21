@@ -105,8 +105,8 @@ NOTIFICATION_SCHEDULE = {
     'mid_morning_scan': '10:30',   # 盤中掃描
     'mid_day_scan': '12:30',       # 午間掃描
     'afternoon_scan': '15:00',     # 盤後掃描
-    'weekly_summary': 'Friday 17:00',  # 週末總結
-    'heartbeat': '08:30',   # 心跳檢測
+    'weekly_summary': '17:00',     # 週末總結 (只用時間部分)
+    'heartbeat': '08:30',          # 心跳檢測
 }
 
 # 日誌配置
