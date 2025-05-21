@@ -1,0 +1,105 @@
+name: Taiwan Stock Bot
+
+on:
+  schedule:
+    # 執行時間以 UTC 為準，台灣時間需要加 8 小時，例如：
+    # UTC 01:00 = 台灣時間 09:00 (早盤掃描)
+    # UTC 02:30 = 台灣時間 10:30 (盤中掃描)
+    # UTC 04:30 = 台灣時間 12:30 (午間掃描)
+    # UTC 07:00 = 台灣時間 15:00 (盤後掃描)
+    # UTC 09:00 = 台灣時間 17:00 (週末總結，僅週五)
+    - cron: '0 1 * * 1-5'    # 早盤掃描 (週一至週五)
+    - cron: '30 2 * * 1-5'   # 盤中掃描 (週一至週五)
+    - cron: '30 4 * * 1-5'   # 午間掃描 (週一至週五)
+    - cron: '0 7 * * 1-5'    # 盤後掃描 (週一至週五)
+    - cron: '0 9 * * 5'      # 週末總結 (僅週五)
+  
+  # 允許手動觸發
+  workflow_dispatch:
+    inputs:
+      run_type:
+        description: '運行類型'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - morning_scan
+          - mid_morning_scan
+          - mid_day_scan
+          - afternoon_scan
+          - weekly_summary
+          - test
+
+jobs:
+  run-stock-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 檢出代碼
+      uses: actions/checkout@v3
+      
+    - name: 設置 Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+        
+    - name: 安裝依賴
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 建立必要目錄
+      run: |
+        mkdir -p logs cache data
+        mkdir -p logs/notifications logs/undelivered data/analysis_results
+        
+    - name: 執行機器人
+      env:
+        # 從 GitHub Secrets 獲取環境變量
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
+        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
+        EMAIL_USE_TLS: ${{ secrets.EMAIL_USE_TLS }}
+        STOCK_DATA_SOURCE: ${{ secrets.STOCK_DATA_SOURCE }}
+        STOCK_API_KEY: ${{ secrets.STOCK_API_KEY }}
+      run: |
+        # 根據觸發方式決定運行命令
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event.inputs.run_type }}" = "full" ]; then
+            python run.py start
+          elif [ "${{ github.event.inputs.run_type }}" = "test" ]; then
+            python test_notification.py
+          else
+            python run.py analyze ${{ github.event.inputs.run_type }}
+          fi
+        else
+          # 根據排程時間決定運行類型
+          HOUR=$(date +%H)
+          MINUTE=$(date +%M)
+          
+          if [ "$HOUR" = "01" ] && [ "$MINUTE" -lt "10" ]; then
+            python run.py analyze morning_scan
+          elif [ "$HOUR" = "02" ] && [ "$MINUTE" -ge "30" ] && [ "$MINUTE" -lt "40" ]; then
+            python run.py analyze mid_morning_scan
+          elif [ "$HOUR" = "04" ] && [ "$MINUTE" -ge "30" ] && [ "$MINUTE" -lt "40" ]; then
+            python run.py analyze mid_day_scan
+          elif [ "$HOUR" = "07" ] && [ "$MINUTE" -lt "10" ]; then
+            python run.py analyze afternoon_scan
+          elif [ "$HOUR" = "09" ] && [ "$MINUTE" -lt "10" ]; then
+            python run.py analyze weekly_summary
+          else
+            python run.py status
+          fi
+        fi
+        
+    - name: 上傳日誌文件
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: stock-bot-logs
+        path: logs/
+        retention-days: 7
