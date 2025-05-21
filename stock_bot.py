@@ -486,77 +486,84 @@ def generate_reason(analysis: Dict[str, Any], category: str) -> str:
     返回:
     - 推薦理由字符串
     """
-    signals = analysis.get("signals", {})
-    
-    if category == "short_term":
-        reasons = []
+    try:
+        # 如果導入成功，使用白話文轉換
+        import text_formatter
+        plain_text = text_formatter.generate_plain_text(analysis, category)
+        return plain_text["description"]
+    except ImportError:
+        # 如果無法導入白話文模組，使用原始邏輯生成技術型描述
+        signals = analysis.get("signals", {})
         
-        # 主要技術指標信號
-        if signals.get("ma5_crosses_above_ma20"):
-            reasons.append("5日均線上穿20日均線")
-        if signals.get("macd_crosses_above_signal"):
-            reasons.append("MACD金叉")
-        if signals.get("rsi_bullish"):
-            reasons.append("RSI顯示超賣回升")
-        if signals.get("volume_spike") and signals.get("price_up"):
-            reasons.append("放量上漲")
-        if signals.get("price_below_lower_band"):
-            reasons.append("價格觸及布林帶下軌後反彈")
+        if category == "short_term":
+            reasons = []
             
-        # 如果沒有特別明顯的信號
-        if not reasons:
-            if analysis.get("weighted_score", 0) > 8:
-                reasons.append("多項技術指標顯示強勢")
-            else:
-                reasons.append("短期技術指標轉為正面")
-        
-        return "、".join(reasons)
-        
-    elif category == "long_term":
-        reasons = []
-        
-        # 長線相關信號
-        if signals.get("price_above_ma20"):
-            reasons.append("價格位於20日均線上方")
-        if signals.get("ma5_above_ma20") and signals.get("ma10_above_ma20"):
-            reasons.append("均線多頭排列")
-        if 40 <= analysis.get("rsi", 0) <= 60:
-            reasons.append("RSI處於健康區間")
-        if signals.get("volume_increasing"):
-            reasons.append("成交量逐漸增加")
+            # 主要技術指標信號
+            if signals.get("ma5_crosses_above_ma20"):
+                reasons.append("5日均線上穿20日均線")
+            if signals.get("macd_crosses_above_signal"):
+                reasons.append("MACD金叉")
+            if signals.get("rsi_bullish"):
+                reasons.append("RSI顯示超賣回升")
+            if signals.get("volume_spike") and signals.get("price_up"):
+                reasons.append("放量上漲")
+            if signals.get("price_below_lower_band"):
+                reasons.append("價格觸及布林帶下軌後反彈")
+                
+            # 如果沒有特別明顯的信號
+            if not reasons:
+                if analysis.get("weighted_score", 0) > 8:
+                    reasons.append("多項技術指標顯示強勢")
+                else:
+                    reasons.append("短期技術指標轉為正面")
             
-        # 如果沒有特別明顯的信號
-        if not reasons:
-            reasons.append("整體技術面趨於穩健")
-        
-        return "、".join(reasons)
-        
-    elif category == "weak":
-        reasons = []
-        
-        # 弱勢股相關信號
-        if signals.get("ma5_crosses_below_ma20"):
-            reasons.append("5日均線下穿20日均線")
-        if signals.get("macd_crosses_below_signal"):
-            reasons.append("MACD死叉")
-        if signals.get("rsi_bearish") or signals.get("rsi_overbought"):
-            reasons.append("RSI顯示超買回落")
-        if signals.get("volume_spike") and signals.get("price_down"):
-            reasons.append("放量下跌")
-        if signals.get("price_above_upper_band"):
-            reasons.append("價格突破布林帶上軌後回落")
+            return "、".join(reasons)
             
-        # 如果沒有特別明顯的信號
-        if not reasons:
-            if analysis.get("weighted_score", 0) < -10:
-                reasons.append("多項技術指標顯示弱勢")
-            else:
-                reasons.append("短期技術指標轉為負面")
+        elif category == "long_term":
+            reasons = []
+            
+            # 長線相關信號
+            if signals.get("price_above_ma20"):
+                reasons.append("價格位於20日均線上方")
+            if signals.get("ma5_above_ma20") and signals.get("ma10_above_ma20"):
+                reasons.append("均線多頭排列")
+            if 40 <= analysis.get("rsi", 0) <= 60:
+                reasons.append("RSI處於健康區間")
+            if signals.get("volume_increasing"):
+                reasons.append("成交量逐漸增加")
+                
+            # 如果沒有特別明顯的信號
+            if not reasons:
+                reasons.append("整體技術面趨於穩健")
+            
+            return "、".join(reasons)
+            
+        elif category == "weak":
+            reasons = []
+            
+            # 弱勢股相關信號
+            if signals.get("ma5_crosses_below_ma20"):
+                reasons.append("5日均線下穿20日均線")
+            if signals.get("macd_crosses_below_signal"):
+                reasons.append("MACD死叉")
+            if signals.get("rsi_bearish") or signals.get("rsi_overbought"):
+                reasons.append("RSI顯示超買回落")
+            if signals.get("volume_spike") and signals.get("price_down"):
+                reasons.append("放量下跌")
+            if signals.get("price_above_upper_band"):
+                reasons.append("價格突破布林帶上軌後回落")
+                
+            # 如果沒有特別明顯的信號
+            if not reasons:
+                if analysis.get("weighted_score", 0) < -10:
+                    reasons.append("多項技術指標顯示弱勢")
+                else:
+                    reasons.append("短期技術指標轉為負面")
+            
+            return "、".join(reasons)
         
-        return "、".join(reasons)
-    
-    # 默認
-    return "綜合技術分析結果"
+        # 默認
+        return "綜合技術分析結果"
 
 def run_analysis(time_slot: str) -> None:
     """
