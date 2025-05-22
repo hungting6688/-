@@ -1,5 +1,5 @@
-# 台股分析機器人依賴套件列表
-# 安裝命令: pip install -r requirements.txt
+# 台股分析機器人核心依賴套件
+# 修正版本 - 移除problematic packages
 
 # 核心數據處理套件
 pandas>=1.5.3
@@ -18,11 +18,8 @@ python-dotenv>=1.0.0
 # 時區處理
 pytz>=2023.3
 
-# 圖表繪製套件
+# 圖表繪製套件 (可選)
 matplotlib>=3.7.1
-
-# 安裝工具
-setuptools>=65.6.3
 
 # 郵件傳送增強套件
 email-validator>=2.0.0
@@ -30,126 +27,30 @@ email-validator>=2.0.0
 # 錯誤重試機制
 tenacity>=8.2.0
 
-# 日誌處理增強
-colorlog>=6.7.0
-
-# 數據驗證套件
-jsonschema>=4.17.0
-
-# 檔案操作增強
-pathlib2>=2.3.7
-
-# 時間處理增強
-python-dateutil>=2.8.2
-
-# 異步 HTTP 請求 (選用)
-aiohttp>=3.8.0
-asyncio>=3.4.3
-
-# 數據庫支援 (選用)
-sqlite3>=3.40.0
-
 # 文字處理增強
 jieba>=0.42.1
 
-# 網頁解析 (選用)
+# 網頁解析 (用於數據獲取)
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 
-# 加密與安全 (選用)
-cryptography>=40.0.0
+# 基本工具包
+setuptools>=65.6.3
+python-dateutil>=2.8.2
 
-# 效能監控 (選用)
+# 效能監控 (可選)
 psutil>=5.9.0
-memory-profiler>=0.60.0
 
 # 測試套件 (開發用)
 pytest>=7.3.0
-pytest-cov>=4.0.0
 pytest-mock>=3.10.0
 
-# 程式碼品質檢查 (開發用)
-flake8>=6.0.0
-black>=23.0.0
-isort>=5.12.0
-
-# 型別檢查 (開發用)
-mypy>=1.3.0
-
-# 文檔產生 (開發用)
-sphinx>=6.2.0
-sphinx-rtd-theme>=1.2.0
-
-# 通知渠道額外依賴 (選用)
-# 取消註釋以啟用特定通知渠道
-
-# Telegram 通知
-# python-telegram-bot>=20.0
-
-# LINE 通知
-# line-bot-sdk>=3.0.0
-
-# Slack 通知
-# slack-sdk>=3.21.0
-
-# Discord 通知
-# discord.py>=2.2.0
-
-# 推播通知
-# pushbullet.py>=0.12.0
-
-# 語音合成 (選用)
-# pyttsx3>=2.90
-
-# 圖像處理 (選用，用於生成圖表)
-# Pillow>=9.5.0
-# seaborn>=0.12.0
-# plotly>=5.14.0
-
-# 機器學習套件 (選用，用於預測模型)
-# scikit-learn>=1.2.0
-# tensorflow>=2.12.0
-# torch>=2.0.0
-
-# 自然語言處理 (選用，用於新聞分析)
-# nltk>=3.8.0
-# textblob>=0.17.0
-
-# 金融數據套件 (選用)
-# yfinance>=0.2.18
-# alpha-vantage>=2.3.1
-# quandl>=3.7.0
-
-# 技術指標計算 (選用)
-# talib>=0.4.0
-# ta>=0.10.0
-
-# 網路爬蟲 (選用)
-# selenium>=4.9.0
-# scrapy>=2.8.0
-
-# 資料庫連接 (選用)
-# sqlalchemy>=2.0.0
-# pymongo>=4.3.0
-# redis>=4.5.0
-
-# 雲端服務整合 (選用)
-# boto3>=1.26.0  # AWS
-# google-cloud-storage>=2.8.0  # Google Cloud
-# azure-storage-blob>=12.16.0  # Azure
-
-# 容器化支援 (選用)
-# docker>=6.1.0
-# kubernetes>=26.1.0
-
-# 效能優化 (選用)
-# numba>=0.57.0
-# cython>=0.29.0
-
-# 版本控制整合 (開發用)
-# gitpython>=3.1.0
-
-# 設定檔管理 (選用)
-# configparser>=6.0.0
-# pyyaml>=6.0.0
-# toml>=0.10.0
+# 注意：以下套件被移除因為它們會導致安裝問題：
+# - sqlite3 (Python內建模組)
+# - asyncio (Python內建模組)
+# - pathlib2 (Python 3.4+內建pathlib)
+# - colorlog (非必須)
+# - jsonschema (非必須)
+# - aiohttp (非必須，且有版本衝突)
+# - 所有機器學習相關套件 (非核心功能)
+# - 所有雲端服務套件 (非核心功能)
