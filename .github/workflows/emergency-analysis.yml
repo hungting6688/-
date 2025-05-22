@@ -1,0 +1,155 @@
+name: Emergency Fast Stock Analysis
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_type:
+        description: '運行類型'
+        required: true
+        default: 'morning_scan'
+        type: choice
+        options:
+          - morning_scan
+          - afternoon_scan
+
+jobs:
+  fast-analysis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # 10分鐘超時
+    
+    steps:
+    - name: 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 設置 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+        
+    - name: 安裝核心依賴
+      run: |
+        pip install requests pandas numpy python-dotenv pytz
+        
+    - name: 緊急快速分析
+      timeout-minutes: 8
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
+        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
+      run: |
+        RUN_TYPE="${{ github.event.inputs.run_type }}"
+        echo "🚀 執行緊急快速分析: $RUN_TYPE"
+        
+        python -c "
+        import sys
+        import time
+        from datetime import datetime
+        
+        print('⏰ 開始時間:', datetime.now().strftime('%H:%M:%S'))
+        
+        try:
+            # 快速導入和執行
+            from twse_data_fetcher import TWStockDataFetcher
+            import notifier
+            
+            print('✅ 模組導入成功')
+            
+            # 初始化
+            fetcher = TWStockDataFetcher()
+            notifier.init()
+            
+            print('✅ 系統初始化完成')
+            
+            # 快速獲取數據
+            print('📊 獲取股票數據...')
+            stocks = fetcher.get_stocks_by_time_slot('$RUN_TYPE')
+            
+            if not stocks:
+                print('❌ 無法獲取股票數據')
+                sys.exit(1)
+            
+            print(f'✅ 獲取 {len(stocks)} 支股票')
+            
+            # 快速分析前20支最活躍股票
+            print('🔍 快速分析前20支最活躍股票...')
+            top_stocks = sorted(stocks, key=lambda x: x.get('trade_value', 0), reverse=True)[:20]
+            
+            short_term = []
+            long_term = []
+            weak_stocks = []
+            
+            for i, stock in enumerate(top_stocks):
+                print(f'  分析 {i+1}/20: {stock[\"code\"]} {stock[\"name\"]}')
+                
+                # 簡化分析
+                score = 0
+                change = stock.get('change_percent', 0)
+                volume = stock.get('trade_value', 0)
+                
+                if change > 2: score += 2
+                elif change > 0: score += 1
+                elif change < -2: score -= 2
+                elif change < 0: score -= 1
+                
+                if volume > 1000000000: score += 1
+                
+                # 分類推薦
+                if score >= 2 and len(short_term) < 3:
+                    short_term.append({
+                        'code': stock['code'],
+                        'name': stock['name'],
+                        'current_price': stock['close'],
+                        'reason': f'今日上漲 {change:.1f}%，表現強勢',
+                        'target_price': round(stock['close'] * 1.05, 1),
+                        'stop_loss': round(stock['close'] * 0.97, 1),
+                        'trade_value': volume
+                    })
+                elif score >= 0 and len(long_term) < 2:
+                    long_term.append({
+                        'code': stock['code'],
+                        'name': stock['name'],
+                        'current_price': stock['close'],
+                        'reason': '技術面穩健，適合中長期投資',
+                        'target_price': round(stock['close'] * 1.08, 1),
+                        'stop_loss': round(stock['close'] * 0.95, 1),
+                        'trade_value': volume
+                    })
+                elif score <= -2 and len(weak_stocks) < 2:
+                    weak_stocks.append({
+                        'code': stock['code'],
+                        'name': stock['name'],
+                        'current_price': stock['close'],
+                        'alert_reason': f'今日下跌 {abs(change):.1f}%，需注意風險',
+                        'trade_value': volume
+                    })
+            
+            print(f'📈 推薦結果: 短線 {len(short_term)} 支, 長線 {len(long_term)} 支, 弱勢 {len(weak_stocks)} 支')
+            
+            # 發送通知
+            print('📧 發送分析通知...')
+            recommendations = {
+                'short_term': short_term,
+                'long_term': long_term,
+                'weak_stocks': weak_stocks
+            }
+            
+            time_names = {
+                'morning_scan': '緊急早盤分析',
+                'afternoon_scan': '緊急盤後分析'
+            }
+            
+            display_name = time_names.get('$RUN_TYPE', '緊急股票分析')
+            notifier.send_combined_recommendations(recommendations, display_name)
+            
+            end_time = datetime.now().strftime('%H:%M:%S')
+            print(f'🎉 分析完成! 結束時間: {end_time}')
+            print('📧 請檢查您的郵箱!')
+            
+        except Exception as e:
+            print(f'❌ 分析失敗: {e}')
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
+        "
