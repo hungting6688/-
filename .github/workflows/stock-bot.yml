@@ -2,17 +2,12 @@ name: Enhanced Taiwan Stock Bot
 
 on:
   schedule:
-    # 執行時間以 UTC 為準，台灣時間需要加 8 小時，例如：
-    # UTC 01:00 = 台灣時間 09:00 (早盤掃描)
-    # UTC 02:30 = 台灣時間 10:30 (盤中掃描)
-    # UTC 04:30 = 台灣時間 12:30 (午間掃描)
-    # UTC 07:00 = 台灣時間 15:00 (盤後掃描)
-    # UTC 09:00 = 台灣時間 17:00 (週末總結，僅週五)
-    - cron: '0 1 * * 1-5'    # 早盤掃描 (週一至週五) - 100支股票
-    - cron: '30 2 * * 1-5'   # 盤中掃描 (週一至週五) - 150支股票
-    - cron: '30 4 * * 1-5'   # 午間掃描 (週一至週五) - 150支股票
-    - cron: '0 7 * * 1-5'    # 盤後掃描 (週一至週五) - 450支股票
-    - cron: '0 9 * * 5'      # 週末總結 (僅週五) - 200支股票
+    # 執行時間以 UTC 為準，台灣時間需要加 8 小時
+    - cron: '0 1 * * 1-5'    # 早盤掃描 (週一至週五) - 台灣時間09:00
+    - cron: '30 2 * * 1-5'   # 盤中掃描 (週一至週五) - 台灣時間10:30
+    - cron: '30 4 * * 1-5'   # 午間掃描 (週一至週五) - 台灣時間12:30
+    - cron: '0 7 * * 1-5'    # 盤後掃描 (週一至週五) - 台灣時間15:00
+    - cron: '0 9 * * 5'      # 週末總結 (僅週五) - 台灣時間17:00
   
   # 允許手動觸發
   workflow_dispatch:
@@ -46,44 +41,97 @@ jobs:
         mkdir -p logs/notifications
         mkdir -p logs/undelivered
       
-    - name: 修正文件名 (如果需要)
-      run: |
-        # 檢查是否存在 requirement.txt 而非 requirements.txt
-        if [ -f "requirement.txt" ] && [ ! -f "requirements.txt" ]; then
-          cp requirement.txt requirements.txt
-        fi
-      
     - name: 設置 Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.9'
         cache: 'pip'
         
-    - name: 安裝依賴
+    - name: 修正檔案名稱並安裝依賴
       run: |
-        python -m pip install --upgrade pip
-        # 檢查 requirements.txt 文件是否存在
-        if [ -f "requirements.txt" ]; then
-          pip install -r requirements.txt
-        else
-          # 如果找不到文件，直接安裝必要的套件
-          pip install requests pandas numpy schedule python-dotenv pytz matplotlib
-          echo "警告: 找不到 requirements.txt 文件，已安裝基本套件"
+        # 檢查並修正requirements檔名
+        if [ -f "requirement.txt" ] && [ ! -f "requirements.txt" ]; then
+          echo "重新命名 requirement.txt -> requirements.txt"
+          mv requirement.txt requirements.txt
         fi
+        
+        # 升級pip
+        python -m pip install --upgrade pip
+        
+        # 先安裝核心依賴
+        pip install requests pandas numpy schedule python-dotenv pytz
+        
+        # 再安裝其他依賴，忽略失敗的套件
+        if [ -f "requirements.txt" ]; then
+          echo "安裝requirements.txt中的套件（忽略錯誤）"
+          pip install -r requirements.txt || echo "部分套件安裝失敗，但繼續執行"
+        fi
+        
+        # 顯示已安裝的套件
+        echo "已安裝的套件："
+        pip list | grep -E "(requests|pandas|numpy|schedule|dotenv|pytz)"
+        
+    - name: 檢查環境變數配置
+      run: |
+        echo "檢查必要的環境變數配置..."
+        python -c "
+        import os
+        required_vars = ['EMAIL_SENDER', 'EMAIL_PASSWORD', 'EMAIL_RECEIVER']
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            print(f'❌ 缺少環境變數: {missing_vars}')
+            print('請在GitHub Secrets中設定這些變數')
+            exit(1)
+        else:
+            print('✅ 必要環境變數已設定')
+            print(f'EMAIL_SENDER: {os.getenv(\"EMAIL_SENDER\")}')
+            print(f'EMAIL_RECEIVER: {os.getenv(\"EMAIL_RECEIVER\")}')
+        "
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
+        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
         
     - name: 檢查台股數據連線
       run: |
         echo "檢查台灣證券交易所API連線狀態..."
         python -c "
         import requests
+        import time
+        
+        # 測試TWSE API
         try:
-            response = requests.get('https://www.twse.com.tw/exchangeReport/STOCK_DAY_ALL?response=json', timeout=10)
+            response = requests.get('https://www.twse.com.tw/exchangeReport/STOCK_DAY_ALL?response=json', timeout=15)
             if response.status_code == 200:
-                print('✅ 台灣證券交易所API連線正常')
+                data = response.json()
+                if data.get('stat') == 'OK':
+                    print('✅ 台灣證券交易所API連線正常')
+                    print(f'   取得 {len(data.get(\"data\", []))} 筆股票資料')
+                else:
+                    print(f'⚠️ TWSE API回應異常: {data.get(\"stat\")}')
             else:
-                print('⚠️ 台灣證券交易所API回應異常：', response.status_code)
+                print(f'⚠️ TWSE API HTTP狀態碼: {response.status_code}')
         except Exception as e:
-            print('❌ 無法連接台灣證券交易所API：', e)
+            print(f'❌ 無法連接TWSE API: {e}')
+        
+        time.sleep(2)
+        
+        # 測試TPEX API
+        try:
+            from datetime import datetime
+            today = datetime.now()
+            minguo_date = f'{today.year-1911}/{today.month:02d}/{today.day:02d}'
+            
+            response = requests.get(f'https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={minguo_date}&se=EW&o=json', timeout=15)
+            if response.status_code == 200:
+                print('✅ 台灣證券櫃檯買賣中心API連線正常')
+            else:
+                print(f'⚠️ TPEX API HTTP狀態碼: {response.status_code}')
+        except Exception as e:
+            print(f'❌ 無法連接TPEX API: {e}')
         "
         
     - name: 執行實際數據測試
@@ -106,132 +154,135 @@ jobs:
     - name: 執行增強版股票分析
       if: github.event.inputs.run_type != 'test_data' && github.event.inputs.run_type != 'test_analysis'
       env:
-        # 從 GitHub Secrets 獲取環境變量
         EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
         EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
         EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
         EMAIL_USE_TLS: ${{ secrets.EMAIL_USE_TLS || 'True' }}
-        # 可選的通知渠道
         LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
         LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        # 顯示目錄內容以便排除問題 
-        echo "目前工作目錄:"
-        pwd
-        echo "目錄內容:"
-        ls -la
-        echo "Python 版本:"
-        python --version
+        echo "目前工作目錄: $(pwd)"
+        echo "Python版本: $(python --version)"
         
-        # 顯示將要執行的分析類型
+        # 決定執行的分析類型
         RUN_TYPE="${{ github.event.inputs.run_type || 'morning_scan' }}"
         echo "執行分析類型: $RUN_TYPE"
         
-        # 根據排程或手動輸入決定分析類型
+        # 顯示要執行的分析說明
         case "$RUN_TYPE" in
           "morning_scan")
-            echo "執行早盤掃描 (100支股票)..."
+            echo "🌅 執行早盤掃描 (100支股票)..."
             ;;
           "mid_morning_scan")
-            echo "執行盤中掃描 (150支股票)..."
+            echo "📈 執行盤中掃描 (150支股票)..."
             ;;
           "mid_day_scan")
-            echo "執行午間掃描 (150支股票)..."
+            echo "🕐 執行午間掃描 (150支股票)..."
             ;;
           "afternoon_scan")
-            echo "執行盤後掃描 (450支股票)..."
+            echo "🌆 執行盤後掃描 (450支股票)..."
             ;;
           "weekly_summary")
-            echo "執行週末總結 (200支股票)..."
+            echo "📊 執行週末總結 (200支股票)..."
             ;;
         esac
         
-        # 執行增強版股票分析
+        # 執行股票分析，增加錯誤處理
         python -c "
-        from enhanced_stock_bot import EnhancedStockBot
         import sys
+        import traceback
         
         try:
+            from enhanced_stock_bot import EnhancedStockBot
+            print('✅ 成功匯入分析模組')
+            
             bot = EnhancedStockBot()
+            print('✅ 成功初始化分析機器人')
+            
             bot.run_analysis('$RUN_TYPE')
             print('✅ 分析執行完成')
+            
+        except ImportError as e:
+            print(f'❌ 模組匯入失敗: {e}')
+            print('嘗試使用基本分析模組...')
+            try:
+                import stock_bot
+                stock_bot.run_analysis('$RUN_TYPE')
+                print('✅ 使用基本模組分析完成')
+            except Exception as e2:
+                print(f'❌ 基本模組也失敗: {e2}')
+                traceback.print_exc()
+                sys.exit(1)
+                
         except Exception as e:
             print(f'❌ 分析執行失敗: {e}')
-            import traceback
             traceback.print_exc()
             sys.exit(1)
         "
         
-    - name: 顯示分析統計
+    - name: 檢查分析結果
       if: always()
       run: |
-        echo "=== 分析結果統計 ==="
+        echo "=== 檢查分析結果 ==="
         
-        # 檢查是否有分析結果
-        if [ -d "data/analysis_results" ]; then
-          echo "分析結果目錄內容:"
-          find data/analysis_results -name "*.json" -type f -exec basename {} \; | sort
-          
-          # 統計今日分析結果
-          TODAY=$(date +%Y%m%d)
-          if [ -d "data/analysis_results/$TODAY" ]; then
-            echo "今日分析檔案:"
-            ls -la "data/analysis_results/$TODAY/"
-          fi
-        else
-          echo "無分析結果目錄"
-        fi
-        
-        # 檢查日誌
+        # 檢查日誌檔案
         if [ -f "logs/stock_bot.log" ]; then
-          echo "=== 最新日誌 (最後20行) ==="
+          echo "📋 最新分析日誌 (最後20行)："
+          echo "----------------------------------------"
           tail -20 logs/stock_bot.log
+          echo "----------------------------------------"
+        else
+          echo "⚠️ 未找到主要日誌檔案"
         fi
         
         # 檢查通知狀態
         if [ -f "cache/notifier_status.json" ]; then
-          echo "=== 通知系統狀態 ==="
-          cat cache/notifier_status.json
+          echo "📧 通知系統狀態："
+          cat cache/notifier_status.json | python -m json.tool
+        else
+          echo "⚠️ 未找到通知狀態檔案"
         fi
         
-    - name: 上傳分析結果和日誌
+        # 檢查分析結果目錄
+        if [ -d "data/analysis_results" ]; then
+          echo "📊 分析結果檔案："
+          find data/analysis_results -name "*.json" -type f -exec basename {} \; | sort
+        else
+          echo "⚠️ 未找到分析結果目錄"
+        fi
+        
+    - name: 上傳執行結果
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: enhanced-stock-analysis-results
+        name: taiwan-stock-analysis-${{ github.event.inputs.run_type || 'morning_scan' }}-${{ github.run_number }}
         path: |
           logs/
           data/analysis_results/
           cache/
-          *.log
         if-no-files-found: warn
         retention-days: 7
         
-    - name: 顯示執行摘要
+    - name: 執行摘要報告
       if: always()
       run: |
-        echo "=== 執行摘要 ==="
+        echo "🔍 === 執行摘要報告 ==="
         echo "執行時間: $(date)"
         echo "分析類型: ${{ github.event.inputs.run_type || '自動排程' }}"
-        echo "Python版本: $(python --version)"
         echo "工作目錄: $(pwd)"
+        echo "Python版本: $(python --version)"
         
-        # 檢查關鍵檔案
-        echo "=== 關鍵檔案檢查 ==="
-        for file in "enhanced_stock_bot.py" "twse_data_fetcher.py" "notifier.py" "config.py"; do
-          if [ -f "$file" ]; then
-            echo "✅ $file 存在"
-          else
-            echo "❌ $file 不存在"
-          fi
-        done
+        # 統計執行結果
+        if [ -f "logs/stock_bot.log" ]; then
+          echo "📈 執行統計："
+          echo "  - 總日誌行數: $(wc -l < logs/stock_bot.log)"
+          echo "  - 錯誤訊息數: $(grep -c "ERROR" logs/stock_bot.log || echo 0)"
+          echo "  - 警告訊息數: $(grep -c "WARNING" logs/stock_bot.log || echo 0)"
+          echo "  - 成功訊息數: $(grep -c "INFO" logs/stock_bot.log || echo 0)"
+        fi
         
-        echo "=== 系統資源使用情況 ==="
-        echo "磁碟使用量:"
-        df -h
-        echo "記憶體使用量:"
-        free -h
+        echo "✅ 摘要報告完成"
