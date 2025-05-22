@@ -55,12 +55,11 @@ class EnhancedStockBot:
         self.cache_dir = os.path.join(DATA_DIR, 'cache')
         os.makedirs(self.cache_dir, exist_ok=True)
         
-        # 時段配置 - 基於緊急分析的成功經驗調整
+        # 時段配置 - 保持原來掃描數量，使用快速分析邏輯
         self.time_slot_config = {
             'morning_scan': {
                 'name': '早盤掃描',
-                'stock_count': 100,
-                'analysis_count': 30,  # 實際分析數量
+                'stock_count': 100,  # 掃描100支股票
                 'recommendation_limits': {
                     'short_term': 3,
                     'long_term': 2,
@@ -69,8 +68,7 @@ class EnhancedStockBot:
             },
             'mid_morning_scan': {
                 'name': '盤中掃描',
-                'stock_count': 150,
-                'analysis_count': 40,
+                'stock_count': 150,  # 掃描150支股票
                 'recommendation_limits': {
                     'short_term': 3,
                     'long_term': 2,
@@ -79,8 +77,7 @@ class EnhancedStockBot:
             },
             'mid_day_scan': {
                 'name': '午間掃描',
-                'stock_count': 150,
-                'analysis_count': 40,
+                'stock_count': 150,  # 掃描150支股票
                 'recommendation_limits': {
                     'short_term': 3,
                     'long_term': 2,
@@ -89,8 +86,7 @@ class EnhancedStockBot:
             },
             'afternoon_scan': {
                 'name': '盤後掃描',
-                'stock_count': 450,
-                'analysis_count': 50,  # 盤後分析更多股票
+                'stock_count': 450,  # 掃描450支股票
                 'recommendation_limits': {
                     'short_term': 4,
                     'long_term': 3,
@@ -99,8 +95,7 @@ class EnhancedStockBot:
             },
             'weekly_summary': {
                 'name': '週末總結',
-                'stock_count': 200,
-                'analysis_count': 50,
+                'stock_count': 200,  # 掃描200支股票
                 'recommendation_limits': {
                     'short_term': 4,
                     'long_term': 4,
@@ -362,7 +357,7 @@ class EnhancedStockBot:
         }
     
     def run_analysis(self, time_slot: str) -> None:
-        """執行分析並發送通知 - 改進版"""
+        """執行分析並發送通知 - 使用快速分析邏輯但保持原來掃描數量"""
         start_time = time.time()
         log_event(f"🚀 開始執行 {time_slot} 分析")
         
@@ -372,39 +367,51 @@ class EnhancedStockBot:
                 log_event("⚠️ 通知系統不可用，嘗試初始化", level='warning')
                 notifier.init()
             
-            # 獲取股票數據
+            # 獲取股票數據 - 保持原來的數量
             stocks = self.get_stocks_for_analysis(time_slot)
             
             if not stocks:
                 log_event("❌ 無法獲取股票數據", level='error')
                 return
             
-            # 根據配置決定分析數量
+            # 獲取配置
             config = self.time_slot_config[time_slot]
-            analysis_count = config['analysis_count']
+            expected_count = config['stock_count']
             
-            # 選擇最活躍的股票進行分析
-            top_stocks = sorted(stocks, key=lambda x: x.get('trade_value', 0), reverse=True)[:analysis_count]
+            log_event(f"📊 成功獲取 {len(stocks)} 支股票（預期 {expected_count} 支）")
             
-            log_event(f"📊 將分析最活躍的 {len(top_stocks)} 支股票")
-            
-            # 快速分析
+            # 使用快速分析邏輯分析所有股票
             all_analyses = []
+            total_stocks = len(stocks)
+            batch_size = 50  # 每批次處理50支股票
             
-            for i, stock in enumerate(top_stocks):
-                try:
-                    if i % 10 == 0:
-                        log_event(f"🔍 分析進度: {i+1}/{len(top_stocks)}")
-                    
-                    analysis = self.analyze_stock_fast(stock)
-                    all_analyses.append(analysis)
-                    
-                except Exception as e:
-                    log_event(f"⚠️ 分析股票 {stock['code']} 失敗: {e}", level='warning')
-                    continue
+            for i in range(0, total_stocks, batch_size):
+                batch = stocks[i:i + batch_size]
+                batch_end = min(i + batch_size, total_stocks)
+                
+                log_event(f"🔍 分析第 {i//batch_size + 1} 批次: 股票 {i+1}-{batch_end}/{total_stocks}")
+                
+                # 批次分析
+                for j, stock in enumerate(batch):
+                    try:
+                        analysis = self.analyze_stock_fast(stock)
+                        all_analyses.append(analysis)
+                        
+                        # 每50支股票顯示進度
+                        if (i + j + 1) % 50 == 0:
+                            elapsed = time.time() - start_time
+                            log_event(f"⏱️ 已分析 {i+j+1}/{total_stocks} 支股票，耗時 {elapsed:.1f}秒")
+                        
+                    except Exception as e:
+                        log_event(f"⚠️ 分析股票 {stock['code']} 失敗: {e}", level='warning')
+                        continue
+                
+                # 批次間短暫休息，避免過載
+                if i + batch_size < total_stocks:
+                    time.sleep(0.5)
             
             elapsed_time = time.time() - start_time
-            log_event(f"✅ 完成 {len(all_analyses)} 支股票分析，耗時 {elapsed_time:.1f} 秒")
+            log_event(f"✅ 完成 {len(all_analyses)} 支股票快速分析，耗時 {elapsed_time:.1f} 秒")
             
             # 生成推薦
             recommendations = self.generate_recommendations(all_analyses, time_slot)
@@ -415,6 +422,17 @@ class EnhancedStockBot:
             weak_count = len(recommendations['weak_stocks'])
             
             log_event(f"📈 推薦結果: 短線 {short_count} 支, 長線 {long_count} 支, 極弱股 {weak_count} 支")
+            
+            # 顯示推薦詳情
+            if short_count > 0:
+                log_event("🔥 短線推薦:")
+                for stock in recommendations['short_term']:
+                    log_event(f"   {stock['code']} {stock['name']}: {stock['reason']}")
+            
+            if long_count > 0:
+                log_event("📊 長線推薦:")
+                for stock in recommendations['long_term']:
+                    log_event(f"   {stock['code']} {stock['name']}: {stock['reason']}")
             
             # 發送通知
             display_name = config['name']
