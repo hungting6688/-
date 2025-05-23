@@ -213,10 +213,10 @@ class EnhancedStockBot:
             score -= 1
         
         # 特殊行業加權
-        if any(keyword in stock_name for keyword in ['航運', '海運', '長榮', '陽明', '萬海']):
-            score += 0.5
-        elif any(keyword in stock_name for keyword in ['台積電', '聯發科', '鴻海']):
-            score += 0.5
+        #if any(keyword in stock_name for keyword in ['航運', '海運', '長榮', '陽明', '萬海']):
+        #   score += 0.5
+        # elif any(keyword in stock_name for keyword in ['台積電', '聯發科', '鴻海']):
+        #   score += 0.5
         
         # 根據得分判斷趨勢和建議
         if score >= 4:
