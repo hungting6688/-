@@ -368,13 +368,13 @@ class TWStockDataFetcher:
         返回:
         - 選定的股票列表
         """
-        # 定義每個時段的股票數量
+        # 定義每個時段的股票數量（已更新為新的數量）
         slot_limits = {
-            'morning_scan': 100,        # 早盤掃描
-            'mid_morning_scan': 150,    # 盤中掃描
-            'mid_day_scan': 150,        # 午間掃描
-            'afternoon_scan': 450,      # 盤後掃描
-            'weekly_summary': 200       # 週末總結
+            'morning_scan': 200,        # 早盤掃描（原100，現200）
+            'mid_morning_scan': 300,    # 盤中掃描（原150，現300）
+            'mid_day_scan': 300,        # 午間掃描（原150，現300）
+            'afternoon_scan': 1000,     # 盤後掃描（原450，現1000）
+            'weekly_summary': 500       # 週末總結（原200，現500）
         }
         
         limit = slot_limits.get(time_slot, 100)
