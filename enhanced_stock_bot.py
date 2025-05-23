@@ -82,11 +82,11 @@ class EnhancedStockBot:
             }
         }
         
-        # 時段配置
+        # 時段配置 - 更新掃描股數
         self.time_slot_config = {
             'morning_scan': {
                 'name': '早盤掃描',
-                'stock_count': 100,
+                'stock_count': 200,          # 早盤：200檔
                 'analysis_focus': 'short_term',  # 早盤重技術面
                 'recommendation_limits': {
                     'short_term': 3,
@@ -96,7 +96,7 @@ class EnhancedStockBot:
             },
             'mid_morning_scan': {
                 'name': '盤中掃描',
-                'stock_count': 150,
+                'stock_count': 300,          # 盤中：300檔
                 'analysis_focus': 'short_term',
                 'recommendation_limits': {
                     'short_term': 3,
@@ -106,7 +106,7 @@ class EnhancedStockBot:
             },
             'mid_day_scan': {
                 'name': '午間掃描',
-                'stock_count': 150,
+                'stock_count': 300,          # 午間：300檔
                 'analysis_focus': 'mixed',  # 午間混合分析
                 'recommendation_limits': {
                     'short_term': 3,
@@ -116,7 +116,7 @@ class EnhancedStockBot:
             },
             'afternoon_scan': {
                 'name': '盤後掃描',
-                'stock_count': 450,
+                'stock_count': 1000,         # 盤後：1000檔
                 'analysis_focus': 'mixed',  # 盤後全面分析
                 'recommendation_limits': {
                     'short_term': 4,
@@ -126,7 +126,7 @@ class EnhancedStockBot:
             },
             'weekly_summary': {
                 'name': '週末總結',
-                'stock_count': 200,
+                'stock_count': 500,          # 週末：500檔
                 'analysis_focus': 'long_term',  # 週末重基本面
                 'recommendation_limits': {
                     'short_term': 4,
@@ -641,12 +641,21 @@ class EnhancedStockBot:
         """生成增強的推薦理由"""
         reasons = []
         
-        # 基礎理由（價格變動）
+        # 基礎理由（價格變動） - 加入當前價格資訊
         change_percent = analysis['change_percent']
+        current_price = analysis['current_price']
+        
+        # 主要價格資訊
         if abs(change_percent) > 3:
-            reasons.append(f"今日{'大漲' if change_percent > 0 else '大跌'} {abs(change_percent):.1f}%")
+            reasons.append(f"今日{'大漲' if change_percent > 0 else '大跌'} {abs(change_percent):.1f}%，現價 {current_price} 元")
         elif abs(change_percent) > 1:
-            reasons.append(f"今日{'上漲' if change_percent > 0 else '下跌'} {abs(change_percent):.1f}%")
+            reasons.append(f"今日{'上漲' if change_percent > 0 else '下跌'} {abs(change_percent):.1f}%，現價 {current_price} 元")
+        elif change_percent > 0:
+            reasons.append(f"今日微漲 {change_percent:.1f}%，現價 {current_price} 元")
+        elif change_percent < 0:
+            reasons.append(f"今日微跌 {abs(change_percent):.1f}%，現價 {current_price} 元")
+        else:
+            reasons.append(f"今日平盤，現價 {current_price} 元")
         
         # 技術面理由
         if analysis['analysis_components'].get('technical'):
@@ -694,7 +703,7 @@ class EnhancedStockBot:
         elif analysis['trade_value'] > 1000000000:
             reasons.append("成交活躍")
         
-        return "、".join(reasons) if reasons else "綜合指標顯示投資機會"
+        return "，".join(reasons) if reasons else f"現價 {current_price} 元，綜合指標顯示投資機會"
     
     def _is_cache_valid(self, cache_key: str) -> bool:
         """檢查快取是否有效"""
