@@ -90,7 +90,7 @@ class EnhancedStockBot:
                 'analysis_focus': 'short_term',  # 早盤重技術面
                 'recommendation_limits': {
                     'short_term': 3,
-                    'long_term': 2,
+                    'long_term': 3,
                     'weak_stocks': 2
                 }
             },
@@ -100,8 +100,8 @@ class EnhancedStockBot:
                 'analysis_focus': 'short_term',
                 'recommendation_limits': {
                     'short_term': 3,
-                    'long_term': 2,
-                    'weak_stocks': 1
+                    'long_term': 3,
+                    'weak_stocks': 2
                 }
             },
             'mid_day_scan': {
@@ -110,8 +110,8 @@ class EnhancedStockBot:
                 'analysis_focus': 'mixed',  # 午間混合分析
                 'recommendation_limits': {
                     'short_term': 3,
-                    'long_term': 2,
-                    'weak_stocks': 1
+                    'long_term': 3,
+                    'weak_stocks': 2
                 }
             },
             'afternoon_scan': {
@@ -119,14 +119,14 @@ class EnhancedStockBot:
                 'stock_count': 1000,         # 盤後：1000檔
                 'analysis_focus': 'mixed',  # 盤後全面分析
                 'recommendation_limits': {
-                    'short_term': 4,
-                    'long_term': 3,
+                    'short_term': 3,
+                    'long_term': 4,
                     'weak_stocks': 2
                 }
             },
             'weekly_summary': {
                 'name': '週末總結',
-                'stock_count': 500,          # 週末：500檔
+                'stock_count': 1000,          # 週末：1000檔
                 'analysis_focus': 'long_term',  # 週末重基本面
                 'recommendation_limits': {
                     'short_term': 4,
