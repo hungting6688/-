@@ -1,29 +1,43 @@
 """
-enhanced_notifier.py - 增強型通知系統（完整版）
-整合顯示現價、漲跌百分比、資金買超等資訊，並包含所有必要的函數
+enhanced_notifier_fixed.py - 修復版通知系統
+解決Gmail認證問題並增加現價和漲跌百分比顯示
 """
 import os
 import time
 import json
-import random
 import logging
 import traceback
 import smtplib
 import socket
+import ssl
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate
 
 # 導入配置
-from config import EMAIL_CONFIG, FILE_BACKUP, RETRY_CONFIG, LOG_DIR, CACHE_DIR
-
-# 嘗試導入白話文轉換模組
 try:
-    import text_formatter
-    WHITE_TEXT_AVAILABLE = True
+    from config import EMAIL_CONFIG, FILE_BACKUP, RETRY_CONFIG, LOG_DIR, CACHE_DIR
 except ImportError:
-    WHITE_TEXT_AVAILABLE = False
+    # 如果沒有config文件，使用環境變數
+    EMAIL_CONFIG = {
+        'enabled': True,
+        'sender': os.getenv('EMAIL_SENDER'),
+        'password': os.getenv('EMAIL_PASSWORD'),
+        'receiver': os.getenv('EMAIL_RECEIVER'),
+        'smtp_server': os.getenv('EMAIL_SMTP_SERVER', 'smtp.gmail.com'),
+        'smtp_port': int(os.getenv('EMAIL_SMTP_PORT', '587')),
+        'use_tls': os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
+    }
+    
+    LOG_DIR = 'logs'
+    CACHE_DIR = 'cache'
+    FILE_BACKUP = {'enabled': True, 'directory': os.path.join(LOG_DIR, 'notifications')}
+    RETRY_CONFIG = {'max_attempts': 3, 'base_delay': 2.0, 'backoff_factor': 1.5, 'max_delay': 60}
+
+# 確保目錄存在
+for directory in [LOG_DIR, CACHE_DIR, FILE_BACKUP['directory']]:
+    os.makedirs(directory, exist_ok=True)
 
 # 配置日誌
 logging.basicConfig(
@@ -31,10 +45,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
-
-# 確保通知備份目錄存在
-if FILE_BACKUP['enabled']:
-    os.makedirs(FILE_BACKUP['directory'], exist_ok=True)
 
 # 狀態追踪
 STATUS = {
@@ -44,36 +54,6 @@ STATUS = {
     'undelivered_count': 0,
     'last_heartbeat': None,
 }
-
-# 載入狀態 (如果存在)
-STATUS_FILE = os.path.join(CACHE_DIR, 'notifier_status.json')
-try:
-    if os.path.exists(STATUS_FILE):
-        with open(STATUS_FILE, 'r', encoding='utf-8') as f:
-            stored_status = json.load(f)
-            # 更新除了 'available' 以外的狀態
-            for channel in STATUS:
-                if channel in stored_status and isinstance(stored_status[channel], dict):
-                    for key in STATUS[channel]:
-                        if key != 'available' and key in stored_status[channel]:
-                            STATUS[channel][key] = stored_status[channel][key]
-            
-            # 更新全局狀態
-            for key in ['last_notification', 'undelivered_count', 'last_heartbeat']:
-                if key in stored_status:
-                    STATUS[key] = stored_status[key]
-                    
-            logging.info("已載入通知狀態")
-except Exception as e:
-    logging.error(f"載入狀態失敗: {e}")
-
-def save_status():
-    """保存狀態到文件"""
-    try:
-        with open(STATUS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(STATUS, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logging.error(f"保存狀態失敗: {e}")
 
 def log_event(message, level='info'):
     """記錄通知事件"""
@@ -87,11 +67,6 @@ def log_event(message, level='info'):
     else:
         logging.info(message)
         print(f"[{timestamp}] ℹ️ {message}")
-    
-    # 在GitHub Actions環境中，添加專用輸出格式以便更好地在日誌中識別
-    if 'GITHUB_ACTIONS' in os.environ:
-        prefix = "::error::" if level == 'error' else "::warning::" if level == 'warning' else "::notice::"
-        print(f"{prefix}{message}")
 
 def format_number(num):
     """格式化數字顯示"""
@@ -111,110 +86,63 @@ def format_price_change(change_percent):
     else:
         return "➖ 0.00%"
 
-def send_notification(message, subject='系統通知', html_body=None, urgent=False):
-    """
-    發送通知，嘗試Email，失敗後備份到檔案
+def check_gmail_app_password():
+    """檢查Gmail應用程式密碼設定"""
+    password = EMAIL_CONFIG.get('password', '')
+    if not password:
+        log_event("未設定EMAIL_PASSWORD環境變數", 'error')
+        return False
     
-    參數:
-    - message: 通知內容
-    - subject: 通知標題
-    - html_body: HTML格式內容(可選)
-    - urgent: 是否緊急通知
+    # Gmail應用程式密碼通常是16位數
+    if len(password) == 16 and password.replace(' ', '').isalnum():
+        log_event("檢測到Gmail應用程式密碼格式")
+        return True
+    elif '@gmail.com' in EMAIL_CONFIG.get('sender', '') and len(password) < 16:
+        log_event("Gmail帳戶需要使用應用程式密碼，請參考以下步驟：", 'warning')
+        log_event("1. 登入 Google 帳戶設定", 'warning')
+        log_event("2. 啟用兩步驟驗證", 'warning')
+        log_event("3. 生成應用程式密碼", 'warning')
+        log_event("4. 將16位密碼設定為EMAIL_PASSWORD", 'warning')
+        return False
     
-    返回:
-    - bool: 是否成功發送
-    """
-    # 記錄通知
-    log_event(f"發送通知: {subject}")
-    
-    # 更新上次通知時間
-    STATUS['last_notification'] = datetime.now().isoformat()
-    
-    # 嘗試發送郵件
-    success = False
-    try:
-        if EMAIL_CONFIG['enabled'] and STATUS['email']['available']:
-            log_event(f"嘗試通過 Email 發送通知")
-            if send_email_notification(message, subject, html_body, urgent):
-                success = True
-                
-                # 更新渠道狀態
-                STATUS['email']['last_success'] = datetime.now().isoformat()
-                STATUS['email']['failure_count'] = 0
-                save_status()
-                
-                log_event(f"通過 Email 發送通知成功")
-    except Exception as e:
-        # 更新失敗次數
-        STATUS['email']['failure_count'] += 1
-        save_status()
-        
-        log_event(f"通過 Email 發送通知失敗: {e}", 'error')
-        log_event(traceback.format_exc(), 'error')
-    
-    # 如果郵件失敗且檔案備份啟用，則保存到文件
-    if not success and FILE_BACKUP['enabled']:
-        try:
-            log_event(f"嘗試將通知保存到檔案")
-            if save_notification_to_file(message, subject, html_body, urgent):
-                # 文件備份成功仍算部分成功
-                STATUS['file']['last_success'] = datetime.now().isoformat()
-                STATUS['file']['failure_count'] = 0
-                save_status()
-                
-                log_event(f"已將通知保存到檔案")
-            else:
-                STATUS['file']['failure_count'] += 1
-                save_status()
-                log_event(f"保存通知到檔案失敗", 'error')
-        except Exception as e:
-            STATUS['file']['failure_count'] += 1
-            save_status()
-            
-            log_event(f"保存通知到檔案發生異常: {e}", 'error')
-            log_event(traceback.format_exc(), 'error')
-    
-    # 如果所有渠道都失敗
-    if not success and not (FILE_BACKUP['enabled'] and STATUS['file']['failure_count'] == 0):
-        STATUS['undelivered_count'] += 1
-        save_status()
-        
-        # 保存未發送的通知
-        save_undelivered_notification(message, subject, html_body, urgent)
-        log_event(f"所有通知渠道都失敗，已保存為未發送通知", 'error')
-    
-    return success
+    return True
 
-def send_email_notification(message, subject, html_body=None, urgent=False):
+def send_email_notification_fixed(message, subject, html_body=None, urgent=False):
     """
-    使用電子郵件發送通知
-    
-    返回:
-    - bool: 是否成功
+    修復版Gmail通知發送
+    解決認證問題並支援應用程式密碼
     """
     sender = EMAIL_CONFIG['sender']
     password = EMAIL_CONFIG['password']
     receiver = EMAIL_CONFIG['receiver']
     smtp_server = EMAIL_CONFIG['smtp_server']
     smtp_port = EMAIL_CONFIG['smtp_port']
-    use_tls = EMAIL_CONFIG['use_tls']
     
     if not sender or not password or not receiver:
         log_event("缺少電子郵件通知配置", 'warning')
         return False
     
-    # 嘗試重試
+    # 檢查Gmail應用程式密碼
+    if 'gmail.com' in smtp_server and not check_gmail_app_password():
+        return False
+    
     max_attempts = RETRY_CONFIG['max_attempts']
-    base_delay = RETRY_CONFIG['base_delay']
-    backoff_factor = RETRY_CONFIG['backoff_factor']
     
     for attempt in range(max_attempts):
         try:
-            # 隨機添加延遲
-            if attempt > 0:
-                delay = base_delay * (backoff_factor ** (attempt - 1))
-                delay = delay * (1 + random.uniform(-0.2, 0.2))
-                time.sleep(delay)
+            log_event(f"嘗試發送郵件 (第 {attempt + 1} 次)")
+            
+            # 創建安全的SSL上下文
+            context = ssl.create_default_context()
+            
+            # 建立SMTP連接
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.ehlo()  # 可能需要額外的ehlo命令
+            server.starttls(context=context)
+            server.ehlo()  # TLS後再次ehlo
+            
+            # 登入
+            server.login(sender, password)
             
             # 創建郵件
             if html_body:
@@ -227,94 +155,90 @@ def send_email_notification(message, subject, html_body=None, urgent=False):
                 msg = MIMEMultipart()
                 msg.attach(MIMEText(message, 'plain', 'utf-8'))
             
-            # 添加郵件頭
+            # 設定郵件標題
             msg['Subject'] = f"{'[緊急] ' if urgent else ''}{subject}"
             msg['From'] = sender
             msg['To'] = receiver
             msg['Date'] = formatdate(localtime=True)
             
-            # 嘗試通過不同方式發送
-            if attempt == 0:
-                # 第一次嘗試：使用標準配置
-                if use_tls:
-                    server = smtplib.SMTP(smtp_server, smtp_port)
-                    server.starttls()
-                else:
-                    server = smtplib.SMTP_SSL(smtp_server, smtp_port)
-            else:
-                # 後續嘗試：嘗試其他常見配置
-                try:
-                    if attempt == 1:
-                        # 嘗試SSL
-                        server = smtplib.SMTP_SSL(smtp_server, 465)
-                    else:
-                        # 嘗試多個常見SMTP服務器
-                        alternate_servers = [
-                            ('smtp.gmail.com', 587, True),
-                            ('smtp-mail.outlook.com', 587, True),
-                            ('smtp.mail.yahoo.com', 587, True),
-                            ('smtp.gmail.com', 465, False)
-                        ]
-                        
-                        for alt_server, alt_port, use_starttls in alternate_servers:
-                            try:
-                                if use_starttls:
-                                    server = smtplib.SMTP(alt_server, alt_port)
-                                    server.starttls()
-                                else:
-                                    server = smtplib.SMTP_SSL(alt_server, alt_port)
-                                break
-                            except:
-                                continue
-                except:
-                    # 如果這些都失敗了，嘗試一次最後的嘗試
-                    server = smtplib.SMTP(smtp_server, smtp_port)
-                    try:
-                        server.starttls()
-                    except:
-                        pass
-            
-            # 登錄並發送
-            server.login(sender, password)
+            # 發送郵件
             server.send_message(msg)
             server.quit()
             
+            log_event("郵件發送成功！")
             return True
             
-        except smtplib.SMTPAuthenticationError:
-            log_event(f"電子郵件身份驗證失敗", 'error')
-            break  # 不需要重試認證錯誤
-            
-        except socket.gaierror:
-            log_event(f"無法連接到郵件服務器，網絡問題", 'warning')
+        except smtplib.SMTPAuthenticationError as e:
+            log_event(f"郵件認證失敗: {e}", 'error')
+            if 'gmail.com' in smtp_server:
+                log_event("Gmail認證失敗，請檢查：", 'error')
+                log_event("1. 是否啟用了兩步驟驗證", 'error')
+                log_event("2. 是否使用應用程式密碼而非一般密碼", 'error')
+                log_event("3. 應用程式密碼是否正確（16位數）", 'error')
+            break  # 認證錯誤不需要重試
             
         except Exception as e:
-            log_event(f"電子郵件通知失敗 (嘗試 {attempt+1}/{max_attempts}): {e}", 'warning')
-    
+            log_event(f"郵件發送失敗 (嘗試 {attempt + 1}/{max_attempts}): {e}", 'error')
+            if attempt < max_attempts - 1:
+                time.sleep(2 ** attempt)  # 指數退避
+            
     return False
 
-def save_notification_to_file(message, subject, html_body=None, urgent=False):
+def send_notification(message, subject='系統通知', html_body=None, urgent=False):
     """
-    將通知保存到本地文件
+    發送通知，優先郵件，失敗後備份到檔案
+    """
+    log_event(f"發送通知: {subject}")
     
-    返回:
-    - bool: 是否成功
-    """
-    if not FILE_BACKUP['enabled']:
-        return False
-        
+    # 更新上次通知時間
+    STATUS['last_notification'] = datetime.now().isoformat()
+    
+    # 嘗試發送郵件
+    success = False
+    try:
+        if EMAIL_CONFIG['enabled'] and STATUS['email']['available']:
+            if send_email_notification_fixed(message, subject, html_body, urgent):
+                success = True
+                STATUS['email']['last_success'] = datetime.now().isoformat()
+                STATUS['email']['failure_count'] = 0
+                log_event("通知發送成功")
+    except Exception as e:
+        STATUS['email']['failure_count'] += 1
+        log_event(f"通知發送失敗: {e}", 'error')
+        log_event(traceback.format_exc(), 'error')
+    
+    # 如果郵件失敗，保存到文件
+    if not success and FILE_BACKUP['enabled']:
+        try:
+            if save_notification_to_file(message, subject, html_body, urgent):
+                STATUS['file']['last_success'] = datetime.now().isoformat()
+                STATUS['file']['failure_count'] = 0
+                log_event("已將通知保存到檔案")
+            else:
+                STATUS['file']['failure_count'] += 1
+        except Exception as e:
+            STATUS['file']['failure_count'] += 1
+            log_event(f"保存通知到檔案失敗: {e}", 'error')
+    
+    # 如果都失敗
+    if not success:
+        STATUS['undelivered_count'] += 1
+        log_event("所有通知渠道都失敗", 'error')
+    
+    return success
+
+def save_notification_to_file(message, subject, html_body=None, urgent=False):
+    """將通知保存到本地文件"""
     try:
         notifications_dir = FILE_BACKUP['directory']
         os.makedirs(notifications_dir, exist_ok=True)
         
-        # 創建文件名
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         urgency = "URGENT_" if urgent else ""
         safe_subject = "".join([c if c.isalnum() else "_" for c in subject])
         filename = f"{urgency}{timestamp}_{safe_subject[:30]}.txt"
         filepath = os.path.join(notifications_dir, filename)
         
-        # 寫入文件
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(f"主題: {subject}\n")
             f.write(f"時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
@@ -335,220 +259,9 @@ def save_notification_to_file(message, subject, html_body=None, urgent=False):
         log_event(f"保存通知到文件失敗: {e}", 'error')
         return False
 
-def save_undelivered_notification(message, subject, html_body=None, urgent=False):
-    """保存未發送的通知以便稍後重試"""
-    try:
-        undelivered_dir = os.path.join(LOG_DIR, 'undelivered')
-        os.makedirs(undelivered_dir, exist_ok=True)
-        
-        # 創建文件名
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"undelivered_{timestamp}.json"
-        filepath = os.path.join(undelivered_dir, filename)
-        
-        # 保存通知數據
-        with open(filepath, 'w', encoding='utf-8') as f:
-            data = {
-                'timestamp': datetime.now().isoformat(),
-                'subject': subject,
-                'message': message,
-                'html_body': html_body,
-                'urgent': urgent,
-                'retry_count': 0
-            }
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        
-        log_event(f"已保存未發送的通知: {filepath}")
-        return True
-    
-    except Exception as e:
-        log_event(f"保存未發送通知失敗: {e}", 'error')
-        return False
-
-def retry_undelivered_notifications(max_retries=3):
-    """重試未發送的通知"""
-    undelivered_dir = os.path.join(LOG_DIR, 'undelivered')
-    if not os.path.exists(undelivered_dir):
-        return 0, 0
-    
-    # 獲取所有未發送的通知
-    files = [f for f in os.listdir(undelivered_dir) if f.startswith('undelivered_') and f.endswith('.json')]
-    if not files:
-        return 0, 0
-    
-    log_event(f"開始重試 {len(files)} 個未發送的通知")
-    
-    success_count = 0
-    for filename in files:
-        try:
-            filepath = os.path.join(undelivered_dir, filename)
-            
-            # 讀取通知數據
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # 檢查重試次數
-            retry_count = data.get('retry_count', 0)
-            if retry_count >= max_retries:
-                log_event(f"通知 {filename} 已達最大重試次數 ({max_retries}), 跳過", 'warning')
-                continue
-            
-            # 重試發送
-            message = data.get('message', '')
-            subject = data.get('subject', '系統通知')
-            html_body = data.get('html_body')
-            urgent = data.get('urgent', False)
-            
-            # 添加重試信息
-            retry_subject = f"{subject} [重試 {retry_count+1}/{max_retries}]"
-            
-            if send_notification(message, retry_subject, html_body, urgent):
-                # 成功發送，刪除文件
-                os.remove(filepath)
-                success_count += 1
-                log_event(f"成功重試發送通知: {filename}")
-            else:
-                # 更新重試次數
-                data['retry_count'] = retry_count + 1
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-                log_event(f"重試發送通知失敗: {filename}", 'warning')
-            
-            # 避免發送過於頻繁
-            time.sleep(5)
-            
-        except Exception as e:
-            log_event(f"處理未發送通知 {filename} 時出錯: {e}", 'error')
-    
-    return len(files), success_count
-
-def send_heartbeat():
-    """發送心跳檢測，確認通知系統正常運作"""
-    now = datetime.now()
-    
-    # 檢查上次心跳時間
-    if STATUS['last_heartbeat']:
-        last_heartbeat = datetime.fromisoformat(STATUS['last_heartbeat'])
-        # 如果距離上次心跳不足1小時，跳過
-        if (now - last_heartbeat).total_seconds() < 3600:  # 1小時
-            return False
-    
-    # 發送心跳通知
-    timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
-    message = f"此為系統心跳檢測通知，時間: {timestamp}\n"
-    
-    # 添加系統狀態
-    message += "\n系統狀態:\n"
-    
-    # 通知渠道狀態
-    for channel in ['email', 'file']:
-        status = STATUS[channel]
-        if status['last_success']:
-            last_time = datetime.fromisoformat(status['last_success'])
-            time_ago = (now - last_time).total_seconds() / 60  # 分鐘
-            if time_ago < 60:
-                time_str = f"{int(time_ago)} 分鐘前"
-            else:
-                time_str = f"{int(time_ago/60)} 小時前"
-        else:
-            time_str = "從未成功"
-        
-        emoji = "✅" if status['available'] and status['failure_count'] < 3 else "⚠️"
-        message += f"  {emoji} {channel}: 上次成功 {time_str}, 失敗次數 {status['failure_count']}\n"
-    
-    # 未送達統計
-    message += f"\n未送達通知數: {STATUS['undelivered_count']}\n"
-    
-    # 發送心跳通知
-    success = send_notification(message, "系統心跳檢測")
-    
-    # 更新心跳時間
-    if success:
-        STATUS['last_heartbeat'] = now.isoformat()
-        save_status()
-    
-    return success
-
-def is_notification_available():
-    """檢查通知系統是否可用"""
-    # 如果Email可用或檔案備份可用，則通知系統可用
-    return (EMAIL_CONFIG['enabled'] and STATUS['email']['available']) or \
-           (FILE_BACKUP['enabled'] and STATUS['file']['available'])
-
-def send_stock_recommendations(stocks, time_slot):
-    """
-    發送股票推薦通知
-    
-    參數:
-    - stocks: 推薦股票列表
-    - time_slot: 時段名稱
-    """
-    if not stocks:
-        message = f"【{time_slot}推薦】\n\n沒有符合條件的推薦股票"
-        subject = f"【{time_slot}推薦】- 無推薦"
-        send_notification(message, subject)
-        return
-    
-    # 生成通知消息
-    today = datetime.now().strftime("%Y/%m/%d")
-    message = f"📈 {today} {time_slot}推薦股票\n\n"
-    
-    for stock in stocks:
-        message += f"📊 {stock['code']} {stock['name']}\n"
-        message += f"推薦理由: {stock['reason']}\n"
-        message += f"目標價: {stock['target_price']} | 止損價: {stock['stop_loss']}\n\n"
-    
-    # 生成 HTML 格式的電子郵件正文
-    html_parts = []
-    html_parts.append("""
-    <html>
-    <head>
-        <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; }
-            .header { color: #0066cc; font-size: 20px; font-weight: bold; margin-bottom: 20px; }
-            .stock { margin-bottom: 20px; border-left: 4px solid #0066cc; padding-left: 15px; }
-            .stock-name { font-weight: bold; font-size: 16px; }
-            .label { color: #666; }
-            .price { color: #009900; font-weight: bold; }
-            .stop-loss { color: #cc0000; font-weight: bold; }
-            .reason { color: #333; }
-            .footer { color: #666; font-size: 12px; margin-top: 30px; }
-        </style>
-    </head>
-    <body>
-        <div class="header">""" + f"📈 {today} {time_slot}推薦股票" + """</div>
-    """)
-    
-    for stock in stocks:
-        stock_html = """
-        <div class="stock">
-            <div class="stock-name">📊 """ + stock['code'] + " " + stock['name'] + """</div>
-            <div><span class="label">推薦理由:</span> <span class="reason">""" + stock['reason'] + """</span></div>
-            <div><span class="label">目標價:</span> <span class="price">""" + str(stock['target_price']) + """</span> | <span class="label">止損價:</span> <span class="stop-loss">""" + str(stock['stop_loss']) + """</span></div>
-        </div>
-        """
-        html_parts.append(stock_html)
-    
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    html_parts.append("""
-        <div class="footer">
-            此電子郵件由台股分析系統自動產生於 """ + timestamp + """
-        </div>
-    </body>
-    </html>
-    """)
-    
-    html_body = "".join(html_parts)
-    subject = f"【{time_slot}推薦】- {today}"
-    send_notification(message, subject, html_body)
-
 def send_combined_recommendations(strategies_data, time_slot):
     """
-    發送包含三種策略的股票推薦通知（增強版）
-    
-    參數:
-    - strategies_data: 包含三種策略的字典 {"short_term": [...], "long_term": [...], "weak_stocks": [...]}
-    - time_slot: 時段名稱
+    發送包含三種策略的股票推薦通知（增強版 - 包含現價和漲跌百分比）
     """
     short_term_stocks = strategies_data.get("short_term", [])
     long_term_stocks = strategies_data.get("long_term", [])
@@ -562,93 +275,586 @@ def send_combined_recommendations(strategies_data, time_slot):
     
     # 生成通知消息
     today = datetime.now().strftime("%Y/%m/%d")
+    message = f"📈 {today} {time_slot}分析報告\n\n"
     
-    # 嘗試使用白話文生成介紹
-    try:
-        if WHITE_TEXT_AVAILABLE:
-            import text_formatter
-            intro_text = text_formatter.generate_intro_text(time_slot.lower().replace(' ', '_'))
-            message = f"📈 {today} {time_slot}分析報告\n\n{intro_text}\n\n"
-        else:
-            message = f"📈 {today} {time_slot}分析報告\n\n"
-    except Exception as e:
-        message = f"📈 {today} {time_slot}分析報告\n\n"
-        logging.error(f"生成引言失敗: {e}")
-    
-    # 短線推薦部分
+    # 短線推薦部分（增強版 - 包含現價和漲跌百分比）
     message += "【短線推薦】\n\n"
     if short_term_stocks:
-        for stock in short_term_stocks:
-            # 基本資訊
-            message += f"📈 {stock['code']} {stock['name']}\n"
+        for i, stock in enumerate(short_term_stocks, 1):
+            message += f"📈 {i}. {stock['code']} {stock['name']}\n"
             
-            # 現價和漲跌幅
+            # 現價和漲跌幅（重點增強）
             current_price = stock.get('current_price', 0)
-            change_percent = stock.get('analysis', {}).get('change_percent', 0) if 'analysis' in stock else 0
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
             message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
             
             # 成交量和資金流向
             trade_value = stock.get('trade_value', 0)
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
-            # 法人買超資訊（如果有）
-            if 'analysis' in stock:
-                analysis = stock['analysis']
-                if 'foreign_net_buy' in analysis:
-                    foreign_net = analysis['foreign_net_buy']
+            # 法人買超資訊
+            if 'foreign_net_buy' in analysis:
+                foreign_net = analysis['foreign_net_buy']
+                if abs(foreign_net) > 1000:  # 超過1000萬才顯示
                     if foreign_net > 0:
                         message += f"🏦 外資買超: {format_number(foreign_net*10000)} 元\n"
-                    elif foreign_net < 0:
+                    else:
                         message += f"🏦 外資賣超: {format_number(abs(foreign_net)*10000)} 元\n"
-                
-                if 'trust_net_buy' in analysis:
-                    trust_net = analysis['trust_net_buy']
-                    if trust_net > 0:
-                        message += f"🏢 投信買超: {format_number(trust_net*10000)} 元\n"
-                    elif trust_net < 0:
-                        message += f"🏢 投信賣超: {format_number(abs(trust_net)*10000)} 元\n"
             
             # 推薦理由
             message += f"📊 推薦理由: {stock['reason']}\n"
             
             # 目標價和止損價
-            message += f"🎯 目標價: {stock['target_price']} | 🛡️ 止損價: {stock['stop_loss']}\n"
+            target_price = stock.get('target_price')
+            stop_loss = stock.get('stop_loss')
+            if target_price:
+                message += f"🎯 目標價: {target_price} 元"
+            if stop_loss:
+                message += f" | 🛡️ 止損價: {stop_loss} 元"
+            message += "\n"
             
             # 技術指標（如果有）
-            if 'analysis' in stock:
-                analysis = stock['analysis']
+            if 'technical_signals' in analysis:
+                signals = analysis['technical_signals']
                 indicators = []
-                if 'rsi' in analysis:
-                    indicators.append(f"RSI: {analysis['rsi']:.1f}")
-                if 'volume_ratio' in analysis:
-                    indicators.append(f"量比: {analysis.get('volume_ratio', 0):.1f}倍")
+                if signals.get('rsi_healthy'):
+                    indicators.append("RSI健康")
+                if signals.get('macd_bullish'):
+                    indicators.append("MACD轉強")
+                if signals.get('ma20_bullish'):
+                    indicators.append("站穩均線")
                 if indicators:
-                    message += f"📉 {' | '.join(indicators)}\n"
+                    message += f"📊 技術指標: {' | '.join(indicators)}\n"
             
             message += "\n"
     else:
         message += "今日無短線推薦股票\n\n"
     
-    # 長線推薦部分
+    # 長線推薦部分（增強版）
     message += "【長線潛力】\n\n"
     if long_term_stocks:
-        for stock in long_term_stocks:
-            # 基本資訊
-            message += f"📊 {stock['code']} {stock['name']}\n"
+        for i, stock in enumerate(long_term_stocks, 1):
+            message += f"📊 {i}. {stock['code']} {stock['name']}\n"
             
             # 現價和漲跌幅
             current_price = stock.get('current_price', 0)
-            change_percent = stock.get('analysis', {}).get('change_percent', 0) if 'analysis' in stock else 0
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
             message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
             
             # 成交量
             trade_value = stock.get('trade_value', 0)
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
-            # 基本面資訊（如果有）
-            if 'analysis' in stock:
-                analysis = stock['analysis']
-                if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
-                    message += f"💸 殖利率: {analysis['dividend_yield']:.1f}%\n"
-                if 'pe_ratio' in analysis and analysis['pe_ratio'] > 0:
-                    message += f"📊 本益比: {analysis['pe_ratio']:.1f}\n"
+            # 基本面資訊
+            if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
+                message += f"💸 殖利率: {analysis['dividend_yield']:.1f}%\n"
+            if 'pe_ratio' in analysis and analysis['pe_ratio'] > 0:
+                message += f"📊 本益比: {analysis['pe_ratio']:.1f}\n"
+            if 'eps_growth' in analysis and analysis['eps_growth'] > 0:
+                message += f"📈 EPS成長: {analysis['eps_growth']:.1f}%\n"
+            
+            # 推薦理由
+            message += f"📋 推薦理由: {stock['reason']}\n"
+            
+            # 目標價和止損價
+            target_price = stock.get('target_price')
+            stop_loss = stock.get('stop_loss')
+            if target_price:
+                message += f"🎯 目標價: {target_price} 元"
+            if stop_loss:
+                message += f" | 🛡️ 止損價: {stop_loss} 元"
+            message += "\n\n"
+    else:
+        message += "今日無長線推薦股票\n\n"
+    
+    # 極弱股警示部分（增強版）
+    message += "【風險警示】\n\n"
+    if weak_stocks:
+        for i, stock in enumerate(weak_stocks, 1):
+            message += f"⚠️ {i}. {stock['code']} {stock['name']}\n"
+            
+            # 現價和跌幅
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
+            
+            # 成交量
+            trade_value = stock.get('trade_value', 0)
+            message += f"💵 成交金額: {format_number(trade_value)}\n"
+            
+            # 警報原因
+            message += f"🚨 警報原因: {stock['alert_reason']}\n"
+            
+            # 風險提示
+            message += f"⚠️ 風險提示: 建議謹慎操作，嚴設停損\n\n"
+    else:
+        message += "今日無極弱股警示\n\n"
+    
+    # 風險提示
+    message += "【投資提醒】\n"
+    message += "⚠️ 本報告僅供參考，不構成投資建議\n"
+    message += "⚠️ 股市有風險，投資需謹慎\n"
+    message += "⚠️ 建議設定停損點，控制投資風險\n\n"
+    message += "祝您投資順利！💰"
+    
+    # 生成HTML格式（增強版）
+    html_body = generate_enhanced_html_report(strategies_data, time_slot, today)
+    
+    subject = f"【{time_slot}分析報告】- {today}"
+    send_notification(message, subject, html_body)
+
+def generate_enhanced_html_report(strategies_data, time_slot, date):
+    """生成增強版HTML報告（包含現價和漲跌百分比）"""
+    
+    short_term_stocks = strategies_data.get("short_term", [])
+    long_term_stocks = strategies_data.get("long_term", [])
+    weak_stocks = strategies_data.get("weak_stocks", [])
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{time_slot}分析報告 - {date}</title>
+        <style>
+            body {{
+                font-family: 'Microsoft JhengHei', Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f8f9fa;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 20px;
+                border-radius: 10px;
+                margin-bottom: 20px;
+                text-align: center;
+            }}
+            .section {{
+                background: white;
+                border-radius: 10px;
+                padding: 20px;
+                margin-bottom: 20px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }}
+            .section-title {{
+                color: #2c3e50;
+                font-size: 18px;
+                font-weight: bold;
+                margin-bottom: 15px;
+                border-bottom: 2px solid #3498db;
+                padding-bottom: 5px;
+            }}
+            .stock-card {{
+                border: 1px solid #e1e5e9;
+                border-radius: 8px;
+                padding: 15px;
+                margin-bottom: 15px;
+                background: #fafbfc;
+            }}
+            .stock-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 10px;
+            }}
+            .stock-name {{
+                font-size: 16px;
+                font-weight: bold;
+                color: #2c3e50;
+            }}
+            .stock-price {{
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            .price-up {{ color: #e74c3c; }}
+            .price-down {{ color: #27ae60; }}
+            .price-flat {{ color: #95a5a6; }}
+            .stock-info {{
+                margin-top: 10px;
+                font-size: 14px;
+            }}
+            .info-row {{
+                margin: 5px 0;
+                display: flex;
+                align-items: center;
+            }}
+            .info-label {{
+                color: #7f8c8d;
+                margin-right: 8px;
+                min-width: 80px;
+            }}
+            .indicators {{
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }}
+            .indicator-tag {{
+                background-color: #3498db;
+                color: white;
+                padding: 3px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            .weak-stock {{
+                border-left: 4px solid #e74c3c;
+            }}
+            .short-term {{
+                border-left: 4px solid #f39c12;
+            }}
+            .long-term {{
+                border-left: 4px solid #27ae60;
+            }}
+            .warning {{
+                background-color: #ffeaa7;
+                border-left: 4px solid #fdcb6e;
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 5px;
+            }}
+            .footer {{
+                text-align: center;
+                color: #7f8c8d;
+                font-size: 12px;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #ecf0f1;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>📈 {time_slot}分析報告</h1>
+            <p>{date}</p>
+        </div>
+    """
+    
+    # 短線推薦
+    if short_term_stocks:
+        html += """
+        <div class="section">
+            <div class="section-title">🔥 短線推薦</div>
+        """
+        for stock in short_term_stocks:
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            price_class = "price-up" if change_percent > 0 else "price-down" if change_percent < 0 else "price-flat"
+            change_symbol = "+" if change_percent > 0 else ""
+            
+            html += f"""
+            <div class="stock-card short-term">
+                <div class="stock-header">
+                    <div class="stock-name">📈 {stock['code']} {stock['name']}</div>
+                    <div class="stock-price {price_class}">
+                        現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <div class="info-row">
+                        <span class="info-label">💵 成交金額:</span>
+                        {format_number(stock.get('trade_value', 0))}
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">📊 推薦理由:</span>
+                        {stock['reason']}
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">🎯 目標價:</span>
+                        {stock.get('target_price', 'N/A')} 元
+                        <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
+                        {stock.get('stop_loss', 'N/A')} 元
+                    </div>
+            """
+            
+            # 技術指標
+            if 'technical_signals' in analysis:
+                signals = analysis['technical_signals']
+                html += '<div class="indicators">'
+                if signals.get('rsi_healthy'):
+                    html += '<span class="indicator-tag">RSI健康</span>'
+                if signals.get('macd_bullish'):
+                    html += '<span class="indicator-tag">MACD轉強</span>'
+                if signals.get('ma20_bullish'):
+                    html += '<span class="indicator-tag">站穩均線</span>'
+                html += '</div>'
+            
+            html += """
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+    
+    # 長線推薦
+    if long_term_stocks:
+        html += """
+        <div class="section">
+            <div class="section-title">📊 長線潛力</div>
+        """
+        for stock in long_term_stocks:
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            price_class = "price-up" if change_percent > 0 else "price-down" if change_percent < 0 else "price-flat"
+            change_symbol = "+" if change_percent > 0 else ""
+            
+            html += f"""
+            <div class="stock-card long-term">
+                <div class="stock-header">
+                    <div class="stock-name">📊 {stock['code']} {stock['name']}</div>
+                    <div class="stock-price {price_class}">
+                        現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <div class="info-row">
+                        <span class="info-label">💵 成交金額:</span>
+                        {format_number(stock.get('trade_value', 0))}
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">📋 推薦理由:</span>
+                        {stock['reason']}
+                    </div>
+            """
+            
+            # 基本面資訊
+            if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
+                html += f"""
+                    <div class="info-row">
+                        <span class="info-label">💸 殖利率:</span>
+                        {analysis['dividend_yield']:.1f}%
+                    </div>
+                """
+            
+            html += f"""
+                    <div class="info-row">
+                        <span class="info-label">🎯 目標價:</span>
+                        {stock.get('target_price', 'N/A')} 元
+                        <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
+                        {stock.get('stop_loss', 'N/A')} 元
+                    </div>
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+    
+    # 風險警示
+    if weak_stocks:
+        html += """
+        <div class="section">
+            <div class="section-title">⚠️ 風險警示</div>
+        """
+        for stock in weak_stocks:
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            html += f"""
+            <div class="stock-card weak-stock">
+                <div class="stock-header">
+                    <div class="stock-name">⚠️ {stock['code']} {stock['name']}</div>
+                    <div class="stock-price price-down">
+                        現價: {current_price} 元 ({change_percent:.2f}%)
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <div class="info-row">
+                        <span class="info-label">💵 成交金額:</span>
+                        {format_number(stock.get('trade_value', 0))}
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">🚨 警報原因:</span>
+                        {stock['alert_reason']}
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">⚠️ 風險提示:</span>
+                        建議謹慎操作，嚴設停損
+                    </div>
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+    
+    # 風險提示
+    html += """
+        <div class="warning">
+            <h3>⚠️ 投資提醒</h3>
+            <p>• 本報告僅供參考，不構成投資建議</p>
+            <p>• 股市有風險，投資需謹慎</p>
+            <p>• 建議設定停損點，控制投資風險</p>
+        </div>
+        
+        <div class="footer">
+            <p>此電子郵件由台股分析系統自動產生於 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>祝您投資順利！💰</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+def send_heartbeat():
+    """發送心跳檢測"""
+    now = datetime.now()
+    
+    # 檢查上次心跳時間
+    if STATUS['last_heartbeat']:
+        try:
+            last_heartbeat = datetime.fromisoformat(STATUS['last_heartbeat'])
+            if (now - last_heartbeat).total_seconds() < 3600:  # 1小時內不重複發送
+                return False
+        except:
+            pass
+    
+    # 發送心跳通知
+    timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+    message = f"🔔 系統心跳檢測通知\n\n"
+    message += f"⏰ 檢測時間: {timestamp}\n\n"
+    
+    # 系統狀態
+    message += "📊 系統狀態:\n"
+    
+    email_status = STATUS['email']
+    if email_status['last_success']:
+        try:
+            last_time = datetime.fromisoformat(email_status['last_success'])
+            hours_ago = (now - last_time).total_seconds() / 3600
+            time_str = f"{hours_ago:.1f} 小時前" if hours_ago >= 1 else f"{int((now - last_time).total_seconds() / 60)} 分鐘前"
+        except:
+            time_str = "時間解析錯誤"
+    else:
+        time_str = "從未成功"
+    
+    emoji = "✅" if email_status['available'] and email_status['failure_count'] < 3 else "⚠️"
+    message += f"  {emoji} 郵件通知: 上次成功 {time_str}, 失敗次數 {email_status['failure_count']}\n"
+    
+    # 未送達統計
+    message += f"\n📈 統計資訊:\n"
+    message += f"  • 未送達通知數: {STATUS['undelivered_count']}\n"
+    message += f"  • 系統運行正常: {'是' if email_status['failure_count'] < 5 else '否'}\n\n"
+    
+    message += "💡 如果您收到此訊息，表示通知系統運作正常！"
+    
+    # 發送心跳通知
+    success = send_notification(message, "🔔 系統心跳檢測")
+    
+    # 更新心跳時間
+    if success:
+        STATUS['last_heartbeat'] = now.isoformat()
+    
+    return success
+
+def is_notification_available():
+    """檢查通知系統是否可用"""
+    return (EMAIL_CONFIG['enabled'] and STATUS['email']['available']) or \
+           (FILE_BACKUP['enabled'] and STATUS['file']['available'])
+
+def init():
+    """初始化通知系統"""
+    log_event("初始化通知系統")
+    
+    # 檢查郵件配置
+    if EMAIL_CONFIG['enabled']:
+        missing = []
+        for key in ['sender', 'password', 'receiver']:
+            if not EMAIL_CONFIG[key]:
+                missing.append(f'EMAIL_{key.upper()}')
+        
+        if missing:
+            log_event(f"警告: 缺少以下郵件配置: {', '.join(missing)}", 'warning')
+            log_event("請設置相應的環境變數", 'warning')
+            STATUS['email']['available'] = False
+        else:
+            log_event("郵件配置檢查通過")
+            if 'gmail.com' in EMAIL_CONFIG['smtp_server']:
+                check_gmail_app_password()
+    
+    # 檢查文件備份
+    if FILE_BACKUP['enabled']:
+        try:
+            os.makedirs(FILE_BACKUP['directory'], exist_ok=True)
+            log_event(f"文件備份目錄準備完成: {FILE_BACKUP['directory']}")
+        except Exception as e:
+            log_event(f"文件備份目錄創建失敗: {e}", 'error')
+            STATUS['file']['available'] = False
+    
+    log_event("通知系統初始化完成")
+
+# 測試函數
+def test_notification():
+    """測試通知功能"""
+    log_event("開始測試通知功能")
+    
+    # 測試基本通知
+    test_message = f"""📧 通知系統測試
+    
+⏰ 測試時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+✅ 如果您收到此郵件，表示通知系統運作正常！
+
+🔧 系統資訊:
+• 郵件服務器: {EMAIL_CONFIG['smtp_server']}:{EMAIL_CONFIG['smtp_port']}
+• TLS加密: {'是' if EMAIL_CONFIG['use_tls'] else '否'}
+• 發件人: {EMAIL_CONFIG['sender']}
+• 收件人: {EMAIL_CONFIG['receiver']}
+
+📊 測試股票推薦格式:
+現價: 100.50 元 📈 +2.5%
+成交金額: 1.2億
+推薦理由: 技術面轉強，MACD金叉
+目標價: 110 元 | 止損價: 95 元
+
+💡 這是測試郵件，請忽略投資建議內容。
+"""
+    
+    success = send_notification(
+        message=test_message,
+        subject="📧 台股分析系統 - 通知測試",
+        urgent=False
+    )
+    
+    if success:
+        log_event("✅ 通知測試成功！請檢查您的郵箱")
+    else:
+        log_event("❌ 通知測試失敗，請檢查配置", 'error')
+    
+    return success
+
+if __name__ == "__main__":
+    # 初始化
+    init()
+    
+    # 執行測試
+    print("=" * 50)
+    print("修復版通知系統測試")
+    print("=" * 50)
+    
+    test_notification()
+    
+    print("\n" + "=" * 50)
+    print("Gmail設定指南:")
+    print("=" * 50)
+    print("1. 登入 Google 帳戶設定")
+    print("2. 啟用「兩步驟驗證」")
+    print("3. 生成「應用程式密碼」")
+    print("4. 將16位密碼設定為 EMAIL_PASSWORD 環境變數")
+    print("5. 重新執行測試")
+    print("=" * 50)
