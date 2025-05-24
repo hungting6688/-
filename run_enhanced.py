@@ -82,26 +82,26 @@ class EnhancedStockBot:
                 'analysis_focus': 'mixed',  # 午間混合分析
                 'recommendation_limits': {
                     'short_term': 3,
-                    'long_term': 2,
-                    'weak_stocks': 1
+                    'long_term': 3,
+                    'weak_stocks': 2
                 }
             },
             'afternoon_scan': {
                 'name': '盤後掃描',
-                'stock_count': 450,
+                'stock_count': 750,
                 'analysis_focus': 'mixed',  # 盤後全面分析
                 'recommendation_limits': {
-                    'short_term': 4,
+                    'short_term': 3,
                     'long_term': 3,
                     'weak_stocks': 2
                 }
             },
             'weekly_summary': {
                 'name': '週末總結',
-                'stock_count': 200,
+                'stock_count': 750,
                 'analysis_focus': 'long_term',  # 週末重基本面
                 'recommendation_limits': {
-                    'short_term': 4,
+                    'short_term': 3,
                     'long_term': 4,
                     'weak_stocks': 3
                 }
