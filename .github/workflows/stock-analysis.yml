@@ -1,0 +1,210 @@
+name: 台股分析機器人
+
+on:
+  schedule:
+    # 早盤掃描 - 工作日 09:00 (台北時間)
+    - cron: '0 1 * * 1-5'  # UTC 01:00 = 台北時間 09:00
+    # 盤中掃描 - 工作日 10:30 (台北時間)
+    - cron: '30 2 * * 1-5' # UTC 02:30 = 台北時間 10:30
+    # 午間掃描 - 工作日 12:30 (台北時間)
+    - cron: '30 4 * * 1-5' # UTC 04:30 = 台北時間 12:30
+    # 盤後掃描 - 工作日 15:00 (台北時間)
+    - cron: '0 7 * * 1-5'  # UTC 07:00 = 台北時間 15:00
+    # 週末總結 - 週五 17:00 (台北時間)
+    - cron: '0 9 * * 5'    # UTC 09:00 = 台北時間 17:00
+    # 心跳檢測 - 每日 08:30 (台北時間)
+    - cron: '30 0 * * *'   # UTC 00:30 = 台北時間 08:30
+  
+  # 手動觸發
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: '分析類型'
+        required: true
+        default: 'morning_scan'
+        type: choice
+        options:
+        - morning_scan
+        - mid_morning_scan
+        - mid_day_scan
+        - afternoon_scan
+        - weekly_summary
+        - heartbeat
+
+jobs:
+  stock-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 設置 Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 安裝依賴套件
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: 檢查 Python 語法
+      run: |
+        echo "🔍 檢查 Python 語法..."
+        python -m py_compile enhanced_stock_bot.py || { echo "❌ enhanced_stock_bot.py 語法錯誤"; exit 1; }
+        python -m py_compile notifier.py || { echo "❌ notifier.py 語法錯誤"; exit 1; }
+        python -m py_compile twse_data_fetcher.py || { echo "❌ twse_data_fetcher.py 語法錯誤"; exit 1; }
+        python -m py_compile config.py || { echo "❌ config.py 語法錯誤"; exit 1; }
+        echo "✅ 所有檔案語法檢查通過！"
+        
+    - name: 測試通知系統
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
+        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
+      run: |
+        echo "🔧 測試通知系統..."
+        python -c "
+import notifier
+notifier.init()
+if notifier.is_notification_available():
+    print('✅ 通知系統可用')
+else:
+    print('⚠️ 通知系統配置不完整')
+        "
+        
+    - name: 決定執行類型
+      id: determine_run_type
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          RUN_TYPE="${{ github.event.inputs.analysis_type }}"
+        else
+          # 根據 cron 時間決定執行類型
+          HOUR=$(date -u +%H)
+          DOW=$(date -u +%u)  # 1=Monday, 7=Sunday
+          
+          case $HOUR in
+            0)  RUN_TYPE="heartbeat" ;;
+            1)  RUN_TYPE="morning_scan" ;;
+            2)  RUN_TYPE="mid_morning_scan" ;;
+            4)  RUN_TYPE="mid_day_scan" ;;
+            7)  RUN_TYPE="afternoon_scan" ;;
+            9)  if [ $DOW -eq 5 ]; then RUN_TYPE="weekly_summary"; else RUN_TYPE="heartbeat"; fi ;;
+            *)  RUN_TYPE="heartbeat" ;;
+          esac
+        fi
+        
+        echo "RUN_TYPE=$RUN_TYPE" >> $GITHUB_OUTPUT
+        echo "🎯 執行類型: $RUN_TYPE"
+        
+    - name: 執行股票分析
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
+        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
+        TZ: 'Asia/Taipei'
+      run: |
+        RUN_TYPE="${{ steps.determine_run_type.outputs.RUN_TYPE }}"
+        echo "🚀 開始執行: $RUN_TYPE"
+        
+        if [ "$RUN_TYPE" = "heartbeat" ]; then
+          python -c "
+import notifier
+notifier.init()
+notifier.send_heartbeat()
+print('💓 心跳檢測完成')
+          "
+        else
+          python enhanced_stock_bot.py $RUN_TYPE
+        fi
+        
+    - name: 上傳日誌檔案
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: logs-${{ steps.determine_run_type.outputs.RUN_TYPE }}-${{ github.run_number }}
+        path: |
+          logs/
+          !logs/**/*.pyc
+        retention-days: 30
+        
+    - name: 清理暫存檔案
+      if: always()
+      run: |
+        echo "🧹 清理暫存檔案..."
+        find . -name "*.pyc" -delete
+        find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+        echo "✅ 清理完成"
+
+  # 錯誤處理和通知
+  error-notification:
+    runs-on: ubuntu-latest
+    needs: stock-analysis
+    if: failure()
+    
+    steps:
+    - name: 檢出代碼
+      uses: actions/checkout@v4
+      
+    - name: 設置 Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: 安裝依賴套件
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests python-dotenv
+        
+    - name: 發送錯誤通知
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+      run: |
+        python -c "
+import os
+import smtplib
+from datetime import datetime
+from email.mime.text import MIMEText
+
+def send_error_notification():
+    sender = os.getenv('EMAIL_SENDER')
+    password = os.getenv('EMAIL_PASSWORD') 
+    receiver = os.getenv('EMAIL_RECEIVER')
+    
+    if not all([sender, password, receiver]):
+        print('缺少郵件配置，跳過錯誤通知')
+        return
+    
+    message = f'''❌ 台股分析機器人執行失敗
+    
+⏰ 失敗時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🔗 查看詳情: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+請檢查 GitHub Actions 日誌了解詳細錯誤資訊。
+    '''
+    
+    try:
+        msg = MIMEText(message, 'plain', 'utf-8')
+        msg['Subject'] = '❌ 台股分析機器人執行失敗通知'
+        msg['From'] = sender
+        msg['To'] = receiver
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(sender, password)
+        server.send_message(msg)
+        server.quit()
+        
+        print('✅ 錯誤通知已發送')
+    except Exception as e:
+        print(f'❌ 發送錯誤通知失敗: {e}')
+
+send_error_notification()
+        "
