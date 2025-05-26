@@ -192,25 +192,9 @@ jobs:
         
         # 執行分析
         if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-          python -c "
-import sys
-sys.path.append('.')
-try:
-    import optimized_notifier as notifier
-    notifier.init()
-    result = notifier.send_heartbeat()
-    print('心跳檢測完成:', '成功' if result else '失敗')
-except Exception as e:
-    print('心跳檢測失敗:', str(e))
-    try:
-        import notifier
-        notifier.init()
-        result = notifier.send_heartbeat()
-        print('標準版心跳檢測完成:', '成功' if result else '失敗')
-    except Exception as e2:
-        print('標準版心跳也失敗:', str(e2))
-        sys.exit(1)
-"
+          # 心跳檢測
+          python -c "import sys; sys.path.append('.'); exec(open('heartbeat_check.py').read())" || \
+          python -c "import notifier; notifier.init(); notifier.send_heartbeat()"
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
           python run_optimized_system.py test
         else
@@ -226,18 +210,8 @@ except Exception as e:
         
         # 執行標準版分析
         if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-          python -c "
-import sys
-sys.path.append('.')
-try:
-    import notifier
-    notifier.init()
-    result = notifier.send_heartbeat()
-    print('心跳檢測完成:', '成功' if result else '失敗')
-except Exception as e:
-    print('心跳檢測失敗:', str(e))
-    sys.exit(1)
-"
+          # 標準版心跳檢測
+          python -c "import notifier; notifier.init(); notifier.send_heartbeat()"
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
           python test_notification.py --test all
         else
