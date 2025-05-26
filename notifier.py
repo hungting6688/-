@@ -285,6 +285,676 @@ def send_combined_recommendations(strategies_data, time_slot):
     long_term_stocks = strategies_data.get("long_term", [])
     weak_stocks = strategies_data.get("weak_stocks", [])
     
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{time_slot}分析報告 - {date}</title>
+        <style>
+            body {{
+                font-family: 'Microsoft JhengHei', Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f8f9fa;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 25px;
+                border-radius: 12px;
+                margin-bottom: 25px;
+                text-align: center;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            }}
+            .section {{
+                background: white;
+                border-radius: 12px;
+                padding: 25px;
+                margin-bottom: 25px;
+                box-shadow: 0 3px 15px rgba(0,0,0,0.08);
+            }}
+            .section-title {{
+                color: #2c3e50;
+                font-size: 20px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                border-bottom: 3px solid #3498db;
+                padding-bottom: 8px;
+                display: flex;
+                align-items: center;
+            }}
+            .section-title.short-term {{
+                border-bottom-color: #e74c3c;
+            }}
+            .section-title.long-term {{
+                border-bottom-color: #27ae60;
+            }}
+            .section-title.weak {{
+                border-bottom-color: #f39c12;
+            }}
+            .stock-card {{
+                border: 1px solid #e1e5e9;
+                border-radius: 10px;
+                padding: 20px;
+                margin-bottom: 20px;
+                background: #fafbfc;
+                transition: transform 0.2s ease;
+            }}
+            .stock-card:hover {{
+                transform: translateY(-2px);
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            }}
+            .stock-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #eee;
+            }}
+            .stock-name {{
+                font-size: 18px;
+                font-weight: bold;
+                color: #2c3e50;
+            }}
+            .stock-price {{
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            .price-up {{ color: #e74c3c; }}
+            .price-down {{ color: #27ae60; }}
+            .price-flat {{ color: #95a5a6; }}
+            .stock-info {{
+                margin-top: 15px;
+                font-size: 14px;
+            }}
+            .info-row {{
+                margin: 8px 0;
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+            }}
+            .info-label {{
+                color: #7f8c8d;
+                margin-right: 8px;
+                min-width: 80px;
+                font-weight: 500;
+            }}
+            .info-value {{
+                color: #2c3e50;
+                font-weight: 500;
+            }}
+            .fundamental-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 10px;
+                margin: 10px 0;
+                padding: 15px;
+                background: #f8f9ff;
+                border-radius: 8px;
+                border-left: 4px solid #3498db;
+            }}
+            .fundamental-item {{
+                text-align: center;
+                padding: 8px;
+                background: white;
+                border-radius: 6px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .fundamental-label {{
+                font-size: 12px;
+                color: #7f8c8d;
+                margin-bottom: 4px;
+            }}
+            .fundamental-value {{
+                font-size: 14px;
+                font-weight: bold;
+                color: #2c3e50;
+            }}
+            .fundamental-value.positive {{
+                color: #27ae60;
+            }}
+            .fundamental-value.negative {{
+                color: #e74c3c;
+            }}
+            .institutional-info {{
+                background: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 8px;
+                padding: 12px;
+                margin: 10px 0;
+            }}
+            .institutional-item {{
+                display: inline-block;
+                margin: 4px 8px;
+                padding: 4px 8px;
+                background: #fff;
+                border-radius: 4px;
+                font-size: 13px;
+                border: 1px solid #ddd;
+            }}
+            .indicators {{
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }}
+            .indicator-tag {{
+                background-color: #3498db;
+                color: white;
+                padding: 4px 10px;
+                border-radius: 15px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            .indicator-tag.technical {{
+                background-color: #9b59b6;
+            }}
+            .indicator-tag.fundamental {{
+                background-color: #27ae60;
+            }}
+            .indicator-tag.institutional {{
+                background-color: #f39c12;
+            }}
+            .weak-stock {{
+                border-left: 5px solid #e74c3c;
+                background: #fdf2f2;
+            }}
+            .short-term {{
+                border-left: 5px solid #f39c12;
+                background: #fff8f3;
+            }}
+            .long-term {{
+                border-left: 5px solid #27ae60;
+                background: #f8fff8;
+            }}
+            .score-badge {{
+                display: inline-block;
+                background: #3498db;
+                color: white;
+                padding: 4px 12px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: bold;
+                margin-left: 10px;
+            }}
+            .score-badge.high {{
+                background: #27ae60;
+            }}
+            .score-badge.medium {{
+                background: #f39c12;
+            }}
+            .score-badge.low {{
+                background: #95a5a6;
+            }}
+            .warning {{
+                background-color: #fff3cd;
+                border-left: 4px solid #ffc107;
+                padding: 20px;
+                margin: 25px 0;
+                border-radius: 8px;
+            }}
+            .footer {{
+                text-align: center;
+                color: #7f8c8d;
+                font-size: 12px;
+                margin-top: 40px;
+                padding-top: 20px;
+                border-top: 1px solid #ecf0f1;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>📈 {time_slot}分析報告</h1>
+            <p>{date}</p>
+        </div>
+    """
+    
+    # 短線推薦
+    if short_term_stocks:
+        html += """
+        <div class="section">
+            <div class="section-title short-term">🔥 短線推薦（技術面主導）</div>
+        """
+        for stock in short_term_stocks:
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            price_class = "price-up" if change_percent > 0 else "price-down" if change_percent < 0 else "price-flat"
+            change_symbol = "+" if change_percent > 0 else ""
+            
+            # 計算評分等級
+            score = analysis.get('weighted_score', 0)
+            if score >= 6:
+                score_class = "high"
+            elif score >= 3:
+                score_class = "medium"
+            else:
+                score_class = "low"
+            
+            html += f"""
+            <div class="stock-card short-term">
+                <div class="stock-header">
+                    <div class="stock-name">📈 {stock['code']} {stock['name']}
+                        <span class="score-badge {score_class}">評分: {score:.1f}</span>
+                    </div>
+                    <div class="stock-price {price_class}">
+                        現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <div class="info-row">
+                        <span class="info-label">💵 成交金額:</span>
+                        <span class="info-value">{format_number(stock.get('trade_value', 0))}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">📊 推薦理由:</span>
+                        <span class="info-value">{stock['reason']}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">🎯 目標價:</span>
+                        <span class="info-value">{stock.get('target_price', 'N/A')} 元</span>
+                        <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
+                        <span class="info-value">{stock.get('stop_loss', 'N/A')} 元</span>
+                    </div>
+            """
+            
+            # 法人買超資訊
+            foreign_net = analysis.get('foreign_net_buy', 0)
+            if abs(foreign_net) >= 1000:
+                foreign_info = format_foreign_net_buy(foreign_net)
+                if foreign_info:
+                    html += f"""
+                    <div class="info-row">
+                        <span class="info-label">🏦 法人動向:</span>
+                        <span class="info-value">{foreign_info.replace('🏦 ', '')}</span>
+                    </div>
+                    """
+            
+            # 技術指標
+            if 'technical_signals' in analysis:
+                signals = analysis['technical_signals']
+                html += '<div class="indicators">'
+                if signals.get('rsi_healthy'):
+                    html += '<span class="indicator-tag technical">RSI健康</span>'
+                if signals.get('macd_bullish'):
+                    html += '<span class="indicator-tag technical">MACD轉強</span>'
+                if signals.get('ma20_bullish'):
+                    html += '<span class="indicator-tag technical">站穩均線</span>'
+                html += '</div>'
+            
+            html += """
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+    
+    # 長線推薦 - 重點增強
+    if long_term_stocks:
+        html += """
+        <div class="section">
+            <div class="section-title long-term">💎 長線潛力（基本面主導）</div>
+        """
+        for stock in long_term_stocks:
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            price_class = "price-up" if change_percent > 0 else "price-down" if change_percent < 0 else "price-flat"
+            change_symbol = "+" if change_percent > 0 else ""
+            
+            # 長線評分
+            long_term_score = stock.get('long_term_score', 0)
+            if long_term_score >= 4:
+                score_class = "high"
+            elif long_term_score >= 2:
+                score_class = "medium"
+            else:
+                score_class = "low"
+            
+            html += f"""
+            <div class="stock-card long-term">
+                <div class="stock-header">
+                    <div class="stock-name">💎 {stock['code']} {stock['name']}
+                        <span class="score-badge {score_class}">長線評分: {long_term_score:.1f}</span>
+                    </div>
+                    <div class="stock-price {price_class}">
+                        現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <div class="info-row">
+                        <span class="info-label">💵 成交金額:</span>
+                        <span class="info-value">{format_number(stock.get('trade_value', 0))}</span>
+                    </div>
+            """
+            
+            # 基本面資訊網格
+            dividend_yield = analysis.get('dividend_yield', 0)
+            eps_growth = analysis.get('eps_growth', 0)
+            roe = analysis.get('roe', 0)
+            pe_ratio = analysis.get('pe_ratio', 0)
+            
+            if dividend_yield > 0 or eps_growth > 0 or roe > 0 or pe_ratio > 0:
+                html += '<div class="fundamental-grid">'
+                
+                if dividend_yield > 0:
+                    dividend_class = "positive" if dividend_yield > 4 else ""
+                    html += f"""
+                    <div class="fundamental-item">
+                        <div class="fundamental-label">殖利率</div>
+                        <div class="fundamental-value {dividend_class}">{dividend_yield:.1f}%</div>
+                    </div>
+                    """
+                
+                if eps_growth != 0:
+                    eps_class = "positive" if eps_growth > 0 else "negative"
+                    html += f"""
+                    <div class="fundamental-item">
+                        <div class="fundamental-label">EPS成長</div>
+                        <div class="fundamental-value {eps_class}">{eps_growth:.1f}%</div>
+                    </div>
+                    """
+                
+                if roe > 0:
+                    roe_class = "positive" if roe > 15 else ""
+                    html += f"""
+                    <div class="fundamental-item">
+                        <div class="fundamental-label">ROE</div>
+                        <div class="fundamental-value {roe_class}">{roe:.1f}%</div>
+                    </div>
+                    """
+                
+                if pe_ratio > 0:
+                    pe_class = "positive" if pe_ratio < 15 else ""
+                    html += f"""
+                    <div class="fundamental-item">
+                        <div class="fundamental-label">本益比</div>
+                        <div class="fundamental-value {pe_class}">{pe_ratio:.1f}倍</div>
+                    </div>
+                    """
+                
+                html += '</div>'
+            
+            # 法人買賣資訊
+            foreign_net = analysis.get('foreign_net_buy', 0)
+            trust_net = analysis.get('trust_net_buy', 0)
+            consecutive_days = analysis.get('consecutive_buy_days', 0)
+            
+            institutional_items = []
+            
+            if abs(foreign_net) >= 1000:
+                foreign_info = format_foreign_net_buy(foreign_net)
+                if foreign_info:
+                    institutional_items.append(foreign_info.replace('🏦 ', ''))
+            
+            if abs(trust_net) >= 1000:
+                if trust_net > 0:
+                    trust_amount = trust_net / 10000
+                    if trust_amount >= 1:
+                        institutional_items.append(f"投信買超: {trust_amount:.1f}億")
+                    else:
+                        institutional_items.append(f"投信買超: {trust_net/1000:.0f}千萬")
+                else:
+                    trust_amount = abs(trust_net) / 10000
+                    if trust_amount >= 1:
+                        institutional_items.append(f"投信賣超: {trust_amount:.1f}億")
+                    else:
+                        institutional_items.append(f"投信賣超: {abs(trust_net)/1000:.0f}千萬")
+            
+            if abs(consecutive_days) >= 3:
+                if consecutive_days > 0:
+                    institutional_items.append(f"連續買超{consecutive_days}天")
+                else:
+                    institutional_items.append(f"連續賣超{abs(consecutive_days)}天")
+            
+            if institutional_items:
+                html += '<div class="institutional-info">🏦 <strong>法人動向:</strong>'
+                for item in institutional_items:
+                    html += f'<span class="institutional-item">{item}</span>'
+                html += '</div>'
+            
+            html += f"""
+                    <div class="info-row">
+                        <span class="info-label">📋 推薦理由:</span>
+                        <span class="info-value">{stock['reason']}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">🎯 目標價:</span>
+                        <span class="info-value">{stock.get('target_price', 'N/A')} 元</span>
+                        <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
+                        <span class="info-value">{stock.get('stop_loss', 'N/A')} 元</span>
+                    </div>
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+    
+    # 風險警示
+    if weak_stocks:
+        html += """
+        <div class="section">
+            <div class="section-title weak">⚠️ 風險警示</div>
+        """
+        for stock in weak_stocks:
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            html += f"""
+            <div class="stock-card weak-stock">
+                <div class="stock-header">
+                    <div class="stock-name">⚠️ {stock['code']} {stock['name']}</div>
+                    <div class="stock-price price-down">
+                        現價: {current_price} 元 ({change_percent:.2f}%)
+                    </div>
+                </div>
+                <div class="stock-info">
+                    <div class="info-row">
+                        <span class="info-label">💵 成交金額:</span>
+                        <span class="info-value">{format_number(stock.get('trade_value', 0))}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">🚨 警報原因:</span>
+                        <span class="info-value">{stock['alert_reason']}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">⚠️ 風險提示:</span>
+                        <span class="info-value">建議謹慎操作，嚴設停損</span>
+                    </div>
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+    
+    # 風險提示
+    html += """
+        <div class="warning">
+            <h3>⚠️ 投資提醒</h3>
+            <p>• 本報告僅供參考，不構成投資建議</p>
+            <p>• 股市有風險，投資需謹慎</p>
+            <p>• <strong>長線投資重視基本面</strong>：關注殖利率、EPS成長、ROE等指標</p>
+            <p>• <strong>短線操作注重技術面</strong>：關注均線、MACD、RSI等指標</p>
+            <p>• <strong>法人動向是重要參考</strong>：外資和投信的買賣行為具指標意義</p>
+            <p>• 建議設定停損點，控制投資風險</p>
+        </div>
+        
+        <div class="footer">
+            <p>此電子郵件由台股分析系統自動產生於 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p>💎 長線投資著重基本面 | 🔥 短線操作關注技術面 | 🏦 法人動向具參考價值</p>
+            <p>祝您投資順利！💰</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+def send_heartbeat():
+    """發送心跳檢測"""
+    now = datetime.now()
+    
+    # 檢查上次心跳時間
+    if STATUS['last_heartbeat']:
+        try:
+            last_heartbeat = datetime.fromisoformat(STATUS['last_heartbeat'])
+            if (now - last_heartbeat).total_seconds() < 3600:  # 1小時內不重複發送
+                return False
+        except:
+            pass
+    
+    # 發送心跳通知
+    timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
+    message = f"🔔 增強系統心跳檢測通知\n\n"
+    message += f"⏰ 檢測時間: {timestamp}\n\n"
+    
+    # 系統狀態
+    message += "📊 系統狀態:\n"
+    
+    email_status = STATUS['email']
+    if email_status['last_success']:
+        try:
+            last_time = datetime.fromisoformat(email_status['last_success'])
+            hours_ago = (now - last_time).total_seconds() / 3600
+            time_str = f"{hours_ago:.1f} 小時前" if hours_ago >= 1 else f"{int((now - last_time).total_seconds() / 60)} 分鐘前"
+        except:
+            time_str = "時間解析錯誤"
+    else:
+        time_str = "從未成功"
+    
+    emoji = "✅" if email_status['available'] and email_status['failure_count'] < 3 else "⚠️"
+    message += f"  {emoji} 郵件通知: 上次成功 {time_str}, 失敗次數 {email_status['failure_count']}\n"
+    
+    # 未送達統計
+    message += f"\n📈 統計資訊:\n"
+    message += f"  • 未送達通知數: {STATUS['undelivered_count']}\n"
+    message += f"  • 系統運行正常: {'是' if email_status['failure_count'] < 5 else '否'}\n\n"
+    
+    # 系統功能說明
+    message += "💎 系統增強功能:\n"
+    message += "  • 長線推薦重視基本面（EPS、殖利率、ROE）\n"
+    message += "  • 法人買超資訊詳細顯示\n"
+    message += "  • 短線推薦著重技術指標\n"
+    message += "  • HTML郵件格式美化\n\n"
+    
+    message += "💡 如果您收到此訊息，表示增強版通知系統運作正常！"
+    
+    # 發送心跳通知
+    success = send_notification(message, "🔔 增強系統心跳檢測")
+    
+    # 更新心跳時間
+    if success:
+        STATUS['last_heartbeat'] = now.isoformat()
+    
+    return success
+
+def is_notification_available():
+    """檢查通知系統是否可用"""
+    return (EMAIL_CONFIG['enabled'] and STATUS['email']['available']) or \
+           (FILE_BACKUP['enabled'] and STATUS['file']['available'])
+
+def init():
+    """初始化通知系統"""
+    log_event("初始化增強版通知系統")
+    
+    # 檢查郵件配置
+    if EMAIL_CONFIG['enabled']:
+        missing = []
+        for key in ['sender', 'password', 'receiver']:
+            if not EMAIL_CONFIG[key]:
+                missing.append(f'EMAIL_{key.upper()}')
+        
+        if missing:
+            log_event(f"警告: 缺少以下郵件配置: {', '.join(missing)}", 'warning')
+            log_event("請設置相應的環境變數", 'warning')
+            STATUS['email']['available'] = False
+        else:
+            log_event("郵件配置檢查通過")
+            if 'gmail.com' in EMAIL_CONFIG['smtp_server']:
+                check_gmail_app_password()
+    
+    # 檢查文件備份
+    if FILE_BACKUP['enabled']:
+        try:
+            os.makedirs(FILE_BACKUP['directory'], exist_ok=True)
+            log_event(f"文件備份目錄準備完成: {FILE_BACKUP['directory']}")
+        except Exception as e:
+            log_event(f"文件備份目錄創建失敗: {e}", 'error')
+            STATUS['file']['available'] = False
+    
+    log_event("增強版通知系統初始化完成")
+    log_event("✨ 新功能: 長線推薦加強基本面顯示")
+
+# 測試函數
+def test_notification():
+    """測試通知功能"""
+    log_event("開始測試增強版通知功能")
+    
+    # 測試基本通知
+    test_message = f"""📧 增強版通知系統測試
+    
+⏰ 測試時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+✅ 如果您收到此郵件，表示通知系統運作正常！
+
+🆕 增強功能:
+• 長線推薦重視基本面指標
+• EPS成長率、殖利率、ROE詳細顯示
+• 法人買賣超資訊加強
+• HTML郵件美化升級
+
+🔧 系統資訊:
+• 郵件服務器: {EMAIL_CONFIG['smtp_server']}:{EMAIL_CONFIG['smtp_port']}
+• TLS加密: {'是' if EMAIL_CONFIG['use_tls'] else '否'}
+• 發件人: {EMAIL_CONFIG['sender']}
+• 收件人: {EMAIL_CONFIG['receiver']}
+
+💡 這是測試郵件，請忽略投資建議內容。
+"""
+    
+    success = send_notification(
+        message=test_message,
+        subject="📧 台股分析系統 - 增強版通知測試",
+        urgent=False
+    )
+    
+    if success:
+        log_event("✅ 增強版通知測試成功！請檢查您的郵箱")
+    else:
+        log_event("❌ 增強版通知測試失敗，請檢查配置", 'error')
+    
+    return success
+
+if __name__ == "__main__":
+    # 初始化
+    init()
+    
+    # 執行測試
+    print("=" * 50)
+    print("增強版通知系統測試")
+    print("=" * 50)
+    
+    test_notification()
+    
+    print("\n" + "=" * 50)
+    print("增強功能說明:")
+    print("=" * 50)
+    print("1. 長線推薦加強基本面顯示")
+    print("2. EPS成長率、殖利率、ROE等關鍵指標")
+    print("3. 法人買賣超資訊詳細顯示")
+    print("4. HTML郵件格式全面升級")
+    print("5. 區分短線技術面和長線基本面重點")
+    print("=" * 50)
+    
     if not short_term_stocks and not long_term_stocks and not weak_stocks:
         message = f"【{time_slot}分析報告】\n\n沒有符合條件的推薦股票和警示"
         subject = f"【{time_slot}分析報告】- 無推薦"
