@@ -614,5 +614,7 @@ class EnhancedStockBot:
                 inst_score -= 2.5
             elif trust_net < -10000:
                 inst_score -= 2
-           elif trust_net < -1000:
-    inst_score -= 1
+            elif trust_net < -1000:
+                inst_score -= 1
+
+
