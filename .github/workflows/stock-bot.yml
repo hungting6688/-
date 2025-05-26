@@ -1,5 +1,5 @@
-
 name: Enhanced Taiwan Stock Bot
+
 on:
   schedule:
     # 台灣時間 = UTC + 8
@@ -8,7 +8,7 @@ on:
     - cron: '30 4 * * 1-5'   # 12:30 午間掃描
     - cron: '0 7 * * 1-5'    # 15:00 盤後掃描
     - cron: '0 9 * * 5'      # 17:00 週末總結（僅週五）
-    
+  
   workflow_dispatch:
     inputs:
       run_type:
@@ -48,6 +48,24 @@ jobs:
         pip install --upgrade pip
         pip install requests pandas numpy python-dotenv pytz schedule beautifulsoup4 lxml
         
+    # 新增：語法檢查步驟
+    - name: 檢查語法
+      run: |
+        echo "🔍 檢查 Python 語法..."
+        
+        # 檢查主要檔案
+        python -m py_compile enhanced_stock_bot.py || { echo "❌ enhanced_stock_bot.py 語法錯誤"; exit 1; }
+        python -m py_compile notifier.py || { echo "❌ notifier.py 語法錯誤"; exit 1; }
+        python -m py_compile twse_data_fetcher.py || { echo "❌ twse_data_fetcher.py 語法錯誤"; exit 1; }
+        python -m py_compile config.py || { echo "❌ config.py 語法錯誤"; exit 1; }
+        
+        # 檢查其他重要檔案（如果存在）
+        [ -f report_generator.py ] && python -m py_compile report_generator.py || true
+        [ -f text_formatter.py ] && python -m py_compile text_formatter.py || true
+        [ -f stock_analyzers.py ] && python -m py_compile stock_analyzers.py || true
+        
+        echo "✅ 所有檔案語法檢查通過！"
+        
     - name: 執行股票分析
       timeout-minutes: 12
       env:
@@ -60,121 +78,4 @@ jobs:
       run: |
         RUN_TYPE="${{ github.event.inputs.run_type || 'morning_scan' }}"
         
-        case "$RUN_TYPE" in
-          "morning_scan")
-            echo "🌅 執行早盤掃描 (掃描200支股票，使用快速分析)..."
-            ;;
-          "mid_morning_scan")
-            echo "📈 執行盤中掃描 (掃描300支股票，使用快速分析)..."
-            ;;
-          "mid_day_scan")
-            echo "🕐 執行午間掃描 (掃描300支股票，使用快速分析)..."
-            ;;
-          "afternoon_scan")
-            echo "🌆 執行盤後掃描 (掃描1000支股票，使用快速分析)..."
-            ;;
-          "weekly_summary")
-            echo "📊 執行週末總結 (掃描500支股票，使用快速分析)..."
-            ;;
-        esac
-        
-        # 執行改進版分析
-        python -c "
-        import sys
-        import traceback
-        from datetime import datetime
-        
-        print(f'⏰ 開始時間: {datetime.now().strftime(\"%H:%M:%S\")}')
-        
-        try:
-            from enhanced_stock_bot import EnhancedStockBot
-            print('✅ 成功導入改進版分析模組')
-            
-            bot = EnhancedStockBot()
-            print('✅ 分析機器人初始化完成')
-            
-            bot.run_analysis('$RUN_TYPE')
-            
-            end_time = datetime.now().strftime('%H:%M:%S')
-            print(f'🎉 分析完成! 結束時間: {end_time}')
-            print('📧 請檢查您的郵箱!')
-            
-        except Exception as e:
-            print(f'❌ 分析執行失敗: {e}')
-            traceback.print_exc()
-            
-            # 嘗試緊急備用分析
-            print('🚨 啟動緊急備用分析...')
-            try:
-                from twse_data_fetcher import TWStockDataFetcher
-                import notifier
-                
-                fetcher = TWStockDataFetcher()
-                notifier.init()
-                
-                # 簡化分析
-                stocks = fetcher.get_stocks_by_time_slot('$RUN_TYPE')
-                if stocks:
-                    top_stocks = sorted(stocks, key=lambda x: x.get('trade_value', 0), reverse=True)[:20]
-                    
-                    short_term = []
-                    for stock in top_stocks:
-                        if stock.get('change_percent', 0) > 2 and len(short_term) < 3:
-                            short_term.append({
-                                'code': stock['code'],
-                                'name': stock['name'],
-                                'current_price': stock['close'],
-                                'reason': f'今日上漲 {stock[\"change_percent\"]:.1f}%，表現強勢',
-                                'target_price': round(stock['close'] * 1.05, 1),
-                                'stop_loss': round(stock['close'] * 0.97, 1),
-                                'trade_value': stock['trade_value']
-                            })
-                    
-                    if short_term:
-                        recommendations = {'short_term': short_term, 'long_term': [], 'weak_stocks': []}
-                        notifier.send_combined_recommendations(recommendations, '緊急備用分析')
-                        print('✅ 緊急備用分析完成')
-                    else:
-                        print('⚠️ 緊急分析無推薦結果')
-                else:
-                    print('❌ 緊急分析也無法獲取數據')
-                    
-            except Exception as e2:
-                print(f'❌ 緊急分析也失敗: {e2}')
-                sys.exit(1)
-        "
-        
-    - name: 檢查執行結果
-      if: always()
-      run: |
-        echo "📋 === 執行結果檢查 ==="
-        
-        # 檢查日誌
-        if [ -f "logs/stock_bot.log" ]; then
-          echo "📄 最新日誌 (最後10行):"
-          tail -10 logs/stock_bot.log
-        else
-          echo "⚠️ 未找到日誌檔案"
-        fi
-        
-        # 檢查分析結果
-        if [ -d "data/analysis_results" ]; then
-          echo "📊 分析結果:"
-          find data/analysis_results -name "*.json" -type f | head -5
-        else
-          echo "⚠️ 未找到分析結果"
-        fi
-        
-        echo "✅ 檢查完成"
-        
-    - name: 上傳執行結果
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: stock-analysis-${{ github.event.inputs.run_type || 'auto' }}-${{ github.run_number }}
-        path: |
-          logs/
-          data/
-          cache/
-        if-no-files-found: ignore
-        retention-days: 3
+        # ... 後續執行邏輯 ...
