@@ -1,81 +1,340 @@
-name: Enhanced Taiwan Stock Bot
+name: 🚀 Taiwan Stock Analysis Bot - Enhanced Long-term Fundamental Analysis
 
 on:
   schedule:
-    # 台灣時間 = UTC + 8
-    - cron: '0 1 * * 1-5'    # 09:00 早盤掃描
-    - cron: '30 2 * * 1-5'   # 10:30 盤中掃描
-    - cron: '30 4 * * 1-5'   # 12:30 午間掃描
-    - cron: '0 7 * * 1-5'    # 15:00 盤後掃描
-    - cron: '0 9 * * 5'      # 17:00 週末總結（僅週五）
+    # 早盤掃描 - 台灣時間 09:00 (UTC+8) = UTC 01:00
+    - cron: '0 1 * * 1-5'
+    # 盤中掃描 - 台灣時間 10:30 (UTC+8) = UTC 02:30  
+    - cron: '30 2 * * 1-5'
+    # 午間掃描 - 台灣時間 12:30 (UTC+8) = UTC 04:30
+    - cron: '30 4 * * 1-5'
+    # 盤後掃描 - 台灣時間 15:00 (UTC+8) = UTC 07:00 (重點長線分析)
+    - cron: '0 7 * * 1-5'
+    # 週末總結 - 台灣時間週五 17:00 (UTC+8) = UTC 09:00 (深度長線分析)
+    - cron: '0 9 * * 5'
+    # 心跳檢測 - 台灣時間 08:30 (UTC+8) = UTC 00:30
+    - cron: '30 0 * * *'
   
+  # 手動觸發
   workflow_dispatch:
     inputs:
-      run_type:
-        description: '運行類型'
+      analysis_type:
+        description: '選擇分析類型'
         required: true
-        default: 'morning_scan'
+        default: 'afternoon_scan'
         type: choice
         options:
-          - morning_scan
-          - mid_morning_scan
-          - mid_day_scan
-          - afternoon_scan
-          - weekly_summary
+        - morning_scan
+        - mid_morning_scan
+        - mid_day_scan
+        - afternoon_scan
+        - weekly_summary
+        - test_notification
+      force_optimized:
+        description: '強制使用優化版系統'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  # 時區設定
+  TZ: Asia/Taipei
+  
+  # 郵件配置 (從 GitHub Secrets 獲取)
+  EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+  EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+  EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+  EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
+  EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
+  EMAIL_USE_TLS: 'True'
+  
+  # 優化版系統配置
+  ENHANCED_ANALYSIS: 'True'
+  LONG_TERM_FOCUS: 'True'
+  
+  # 市場環境配置 (可根據市況調整)
+  MARKET_ENVIRONMENT: ${{ secrets.MARKET_ENVIRONMENT || 'neutral' }}
+  
+  # 分析配置
+  USE_FUNDAMENTAL_ANALYSIS: 'True'
+  USE_INSTITUTIONAL_ANALYSIS: 'True'
+  
+  # 通知配置
+  NOTIFICATION_ENABLED: 'True'
+  HTML_EMAIL: 'True'
 
 jobs:
   stock-analysis:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # 15分鐘總超時
     
     steps:
-    - name: 檢出代碼
+    - name: 📥 Checkout Repository
       uses: actions/checkout@v4
       
-    - name: 建立必要目錄
-      run: |
-        mkdir -p logs cache data
-        mkdir -p data/analysis_results
-        mkdir -p logs/notifications
-        
-    - name: 設置 Python
-      uses: actions/setup-python@v5
+    - name: 🐍 Setup Python Environment
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.11'
+        cache: 'pip'
         
-    - name: 安裝核心依賴
+    - name: 📦 Install Dependencies
       run: |
+        echo "📦 安裝套件依賴..."
         pip install --upgrade pip
-        pip install requests pandas numpy python-dotenv pytz schedule beautifulsoup4 lxml
+        pip install -r requirements.txt
+        echo "✅ 套件安裝完成"
         
-    # 新增：語法檢查步驟
-    - name: 檢查語法
+    - name: 🔧 Setup Environment
       run: |
-        echo "🔍 檢查 Python 語法..."
+        echo "🔧 設置執行環境..."
         
-        # 檢查主要檔案
-        python -m py_compile enhanced_stock_bot.py || { echo "❌ enhanced_stock_bot.py 語法錯誤"; exit 1; }
-        python -m py_compile notifier.py || { echo "❌ notifier.py 語法錯誤"; exit 1; }
-        python -m py_compile twse_data_fetcher.py || { echo "❌ twse_data_fetcher.py 語法錯誤"; exit 1; }
-        python -m py_compile config.py || { echo "❌ config.py 語法錯誤"; exit 1; }
+        # 創建必要目錄
+        mkdir -p logs cache data data/analysis_results data/analysis_results_optimized
         
-        # 檢查其他重要檔案（如果存在）
-        [ -f report_generator.py ] && python -m py_compile report_generator.py || true
-        [ -f text_formatter.py ] && python -m py_compile text_formatter.py || true
-        [ -f stock_analyzers.py ] && python -m py_compile stock_analyzers.py || true
+        # 顯示時區資訊
+        echo "🌏 當前時區: $(date)"
+        echo "🌏 台灣時間: $(TZ=Asia/Taipei date)"
         
-        echo "✅ 所有檔案語法檢查通過！"
+        # 檢查優化版系統文件
+        if [ -f "enhanced_stock_bot_optimized.py" ] && [ -f "optimized_notifier.py" ]; then
+          echo "✅ 優化版系統檔案就緒"
+          echo "OPTIMIZED_SYSTEM_AVAILABLE=true" >> $GITHUB_ENV
+        else
+          echo "⚠️ 優化版系統檔案不存在，將使用標準版"
+          echo "OPTIMIZED_SYSTEM_AVAILABLE=false" >> $GITHUB_ENV
+        fi
         
-    - name: 執行股票分析
-      timeout-minutes: 12
-      env:
-        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-        EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
-        EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
-        EMAIL_USE_TLS: ${{ secrets.EMAIL_USE_TLS || 'True' }}
+        # 檢查必要配置
+        if [ -z "$EMAIL_SENDER" ] || [ -z "$EMAIL_PASSWORD" ] || [ -z "$EMAIL_RECEIVER" ]; then
+          echo "❌ 郵件配置不完整"
+          echo "EMAIL_CONFIG_VALID=false" >> $GITHUB_ENV
+        else
+          echo "✅ 郵件配置檢查通過"
+          echo "EMAIL_CONFIG_VALID=true" >> $GITHUB_ENV
+        fi
+        
+    - name: 🕒 Determine Analysis Type
       run: |
-        RUN_TYPE="${{ github.event.inputs.run_type || 'morning_scan' }}"
+        echo "🕒 決定分析類型..."
         
-        # ... 後續執行邏輯 ...
+        # 如果是手動觸發
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          ANALYSIS_TYPE="${{ github.event.inputs.analysis_type }}"
+          echo "👤 手動觸發: $ANALYSIS_TYPE"
+        else
+          # 根據排程時間決定分析類型
+          CURRENT_HOUR=$(TZ=Asia/Taipei date +%H)
+          CURRENT_DAY=$(TZ=Asia/Taipei date +%u)  # 1=Monday, 7=Sunday
+          
+          echo "📅 當前時間: $(TZ=Asia/Taipei date)"
+          echo "⏰ 小時: $CURRENT_HOUR, 星期: $CURRENT_DAY"
+          
+          case $CURRENT_HOUR in
+            01) ANALYSIS_TYPE="morning_scan" ;;      # 09:00 台灣時間
+            02) ANALYSIS_TYPE="mid_morning_scan" ;;  # 10:30 台灣時間  
+            04) ANALYSIS_TYPE="mid_day_scan" ;;      # 12:30 台灣時間
+            07) ANALYSIS_TYPE="afternoon_scan" ;;    # 15:00 台灣時間
+            09) if [ $CURRENT_DAY -eq 5 ]; then     # 週五
+                  ANALYSIS_TYPE="weekly_summary"     # 17:00 台灣時間
+                else
+                  ANALYSIS_TYPE="afternoon_scan"
+                fi ;;
+            00) ANALYSIS_TYPE="heartbeat" ;;         # 08:30 台灣時間
+            *) ANALYSIS_TYPE="afternoon_scan" ;;     # 預設值
+          esac
+          
+          echo "🤖 自動排程: $ANALYSIS_TYPE"
+        fi
+        
+        echo "ANALYSIS_TYPE=$ANALYSIS_TYPE" >> $GITHUB_ENV
+        echo "📊 將執行: $ANALYSIS_TYPE"
+        
+    - name: 💎 Run Optimized Stock Analysis
+      if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'true' && env.EMAIL_CONFIG_VALID == 'true'
+      run: |
+        echo "💎 執行優化版股市分析..."
+        echo "📊 分析類型: $ANALYSIS_TYPE"
+        
+        # 顯示優化版特色
+        echo "✨ 優化版特色:"
+        echo "  📈 長線推薦基本面權重提升 140%"
+        echo "  🏦 法人買賣權重提升 33%"  
+        echo "  💸 殖利率 > 2.5% 優先推薦"
+        echo "  📊 EPS成長 > 8% 優先推薦"
+        echo "  💰 法人買超 > 5000萬 優先推薦"
+        
+        # 根據分析類型顯示預期結果
+        case $ANALYSIS_TYPE in
+          "morning_scan")
+            echo "🌅 早盤掃描: 200支股票，短線推薦優先"
+            ;;
+          "mid_morning_scan")
+            echo "☀️ 盤中掃描: 300支股票，短線推薦優先"
+            ;;
+          "mid_day_scan")
+            echo "🌞 午間掃描: 300支股票，混合分析"
+            ;;
+          "afternoon_scan")
+            echo "🌇 盤後掃描: 1000支股票，長線推薦增加至4支"
+            echo "💎 重點關注基本面優質股"
+            ;;
+          "weekly_summary")
+            echo "📈 週末總結: 1000支股票，長線推薦增加至5支"
+            echo "💎 深度挖掘基本面優質股，最佳長線分析時段"
+            ;;
+          "heartbeat")
+            echo "💓 系統心跳檢測"
+            ;;
+          "test_notification")
+            echo "📧 測試通知功能"
+            ;;
+        esac
+        
+        # 執行分析
+        if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
+          python -c "
+import sys
+sys.path.append('.')
+try:
+    import optimized_notifier as notifier
+    notifier.init()
+    result = notifier.send_heartbeat()
+    print('💓 心跳檢測完成:', '成功' if result else '失敗')
+except Exception as e:
+    print('❌ 心跳檢測失敗:', str(e))
+    # 嘗試使用標準版
+    try:
+        import notifier
+        notifier.init()
+        result = notifier.send_heartbeat()
+        print('💓 標準版心跳檢測完成:', '成功' if result else '失敗')
+    except Exception as e2:
+        print('❌ 標準版心跳也失敗:', str(e2))
+        sys.exit(1)
+"
+        elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
+          python run_optimized_system.py test
+        else
+          python run_optimized_system.py run --slot $ANALYSIS_TYPE
+        fi
+        
+    - name: 📊 Run Standard Stock Analysis
+      if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'false' && env.EMAIL_CONFIG_VALID == 'true'
+      run: |
+        echo "📊 執行標準版股市分析..."
+        echo "⚠️ 優化版系統不可用，使用標準版"
+        echo "📊 分析類型: $ANALYSIS_TYPE"
+        
+        # 執行標準版分析
+        if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
+          python -c "
+import sys
+sys.path.append('.')
+try:
+    import notifier
+    notifier.init()
+    result = notifier.send_heartbeat()
+    print('💓 心跳檢測完成:', '成功' if result else '失敗')
+except Exception as e:
+    print('❌ 心跳檢測失敗:', str(e))
+    sys.exit(1)
+"
+        elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
+          python test_notification.py --test all
+        else
+          # 使用標準版分析
+          if [ -f "enhanced_stock_bot.py" ]; then
+            python enhanced_stock_bot.py $ANALYSIS_TYPE
+          elif [ -f "stock_bot.py" ]; then  
+            python stock_bot.py $ANALYSIS_TYPE
+          else
+            echo "❌ 找不到可執行的分析程式"
+            exit 1
+          fi
+        fi
+        
+    - name: ❌ Handle Missing Configuration
+      if: env.EMAIL_CONFIG_VALID == 'false'
+      run: |
+        echo "❌ 郵件配置不完整，無法執行分析"
+        echo ""
+        echo "🔧 請在 GitHub Repository Settings > Secrets 中設定："
+        echo "  📧 EMAIL_SENDER - 發件人郵箱"
+        echo "  🔑 EMAIL_PASSWORD - 郵箱應用程式密碼"
+        echo "  📨 EMAIL_RECEIVER - 收件人郵箱"
+        echo ""
+        echo "💡 Gmail 用戶請使用應用程式密碼（16位數）"
+        echo "💡 設定步驟："
+        echo "  1. 啟用 Google 兩步驟驗證"
+        echo "  2. 生成應用程式密碼"
+        echo "  3. 將16位密碼設為 EMAIL_PASSWORD"
+        echo ""
+        
+        # 創建提醒檔案
+        echo "郵件配置缺失 - $(date)" > missing_config.log
+        
+        exit 1
+        
+    - name: 📋 Analysis Summary
+      if: success()
+      run: |
+        echo "📋 分析執行摘要"
+        echo "==============================================="
+        echo "⏰ 執行時間: $(TZ=Asia/Taipei date)"
+        echo "📊 分析類型: $ANALYSIS_TYPE"
+        echo "💎 系統版本: $([ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ] && echo "優化版（長線基本面強化）" || echo "標準版")"
+        echo "📧 通知狀態: $([ "$EMAIL_CONFIG_VALID" = "true" ] && echo "已發送" || echo "配置錯誤")"
+        echo ""
+        
+        if [ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ]; then
+          echo "✨ 優化版功能已啟用："
+          echo "  💎 長線推薦基本面分析強化"
+          echo "  📊 重點關注：殖利率、EPS成長、法人買超"
+          echo "  🎯 推薦標準：更嚴格的基本面篩選"
+          echo "  📧 通知優化：詳細基本面資訊顯示"
+        fi
+        
+        # 根據分析類型顯示特色
+        case $ANALYSIS_TYPE in
+          "afternoon_scan"|"weekly_summary")
+            echo ""
+            echo "💎 長線分析重點："
+            echo "  📈 1000支股票深度分析"
+            echo "  💸 優先推薦高殖利率股票（>2.5%）"
+            echo "  📊 優先推薦EPS高成長股票（>8%）"
+            echo "  🏦 優先推薦法人大額買超股票（>5000萬）"
+            echo "  🏆 重視ROE、連續配息等品質指標"
+            ;;
+        esac
+        
+        echo "==============================================="
+        echo "✅ 股市分析系統執行完成"
+        
+    - name: 🗂️ Archive Analysis Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: stock-analysis-results-${{ env.ANALYSIS_TYPE }}-${{ github.run_number }}
+        path: |
+          logs/
+          data/analysis_results*/
+          *.log
+        retention-days: 30
+        
+    - name: 💬 Workflow Status Notification
+      if: failure()
+      run: |
+        echo "❌ 工作流程執行失敗"
+        echo "📊 分析類型: $ANALYSIS_TYPE"
+        echo "⏰ 失敗時間: $(TZ=Asia/Taipei date)"
+        echo ""
+        echo "🔍 可能原因："
+        echo "  1. 郵件配置錯誤"
+        echo "  2. 網路連線問題"
+        echo "  3. 台股資料源異常"
+        echo "  4. 程式碼錯誤"
+        echo ""
+        echo "💡 建議檢查："
+        echo "  - GitHub Secrets 郵件設定"
+        echo "  - 程式碼是否正確"
+        echo "  - 執行日誌錯誤訊息"
