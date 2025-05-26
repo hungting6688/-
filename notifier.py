@@ -1,6 +1,8 @@
 """
-optimized_notifier.py - 優化版通知系統
-針對長線推薦加強 EPS、法人買超、殖利率等基本面資訊顯示
+optimized_notifier_fixed.py - 修復版優化通知系統
+修復問題：
+1. 短線推薦的技術指標小標籤消失
+2. 長線推薦的文字顯示不清楚
 """
 import os
 import time
@@ -41,7 +43,7 @@ for directory in [LOG_DIR, CACHE_DIR, FILE_BACKUP['directory']]:
 
 # 配置日誌
 logging.basicConfig(
-    filename=os.path.join(LOG_DIR, 'optimized_notifier.log'),
+    filename=os.path.join(LOG_DIR, 'optimized_notifier_fixed.log'),
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
@@ -99,6 +101,47 @@ def format_institutional_flow(amount_in_wan):
         return f"{amount_yuan/10000000:.0f}千萬"
     else:
         return f"{amount_yuan/10000:.0f}萬"
+
+def get_technical_indicators_text(analysis):
+    """獲取技術指標文字（修復短線指標顯示）"""
+    indicators = []
+    
+    # RSI 指標
+    if 'rsi' in analysis:
+        rsi_value = analysis['rsi']
+        if rsi_value < 30:
+            indicators.append("RSI超賣")
+        elif rsi_value > 70:
+            indicators.append("RSI超買") 
+        else:
+            indicators.append(f"RSI {rsi_value:.0f}")
+    
+    # MACD 指標
+    technical_signals = analysis.get('technical_signals', {})
+    if technical_signals.get('macd_golden_cross'):
+        indicators.append("MACD金叉")
+    elif technical_signals.get('macd_bullish'):
+        indicators.append("MACD轉強")
+    
+    # 均線指標
+    if technical_signals.get('ma20_bullish'):
+        indicators.append("站穩20MA")
+    if technical_signals.get('ma_golden_cross'):
+        indicators.append("均線多頭")
+    
+    # 成交量
+    if 'volume_ratio' in analysis:
+        vol_ratio = analysis['volume_ratio']
+        if vol_ratio > 2:
+            indicators.append(f"爆量{vol_ratio:.1f}倍")
+        elif vol_ratio > 1.5:
+            indicators.append(f"放量{vol_ratio:.1f}倍")
+    
+    # 法人買超（短線也顯示）
+    if 'foreign_net_buy' in analysis and analysis['foreign_net_buy'] > 10000:
+        indicators.append("外資買超")
+    
+    return indicators
 
 def send_email_notification_optimized(message, subject, html_body=None, urgent=False):
     """優化版Gmail通知發送"""
@@ -236,7 +279,8 @@ def save_notification_to_file(message, subject, html_body=None, urgent=False):
 
 def send_optimized_combined_recommendations(strategies_data, time_slot):
     """
-    發送優化版股票推薦通知（強化長線基本面資訊顯示）
+    發送修復版股票推薦通知
+    修復：1. 短線技術指標標籤顯示 2. 長線文字清晰度
     """
     short_term_stocks = strategies_data.get("short_term", [])
     long_term_stocks = strategies_data.get("long_term", [])
@@ -252,11 +296,11 @@ def send_optimized_combined_recommendations(strategies_data, time_slot):
     today = datetime.now().strftime("%Y/%m/%d")
     message = f"📈 {today} {time_slot}分析報告\n\n"
     
-    # 短線推薦部分
-    message += "【短線推薦】\n\n"
+    # 短線推薦部分（修復技術指標顯示）
+    message += "【🔥 短線推薦】\n\n"
     if short_term_stocks:
         for i, stock in enumerate(short_term_stocks, 1):
-            message += f"📈 {i}. {stock['code']} {stock['name']}\n"
+            message += f"🔥 {i}. {stock['code']} {stock['name']}\n"
             
             # 現價和漲跌幅
             current_price = stock.get('current_price', 0)
@@ -269,6 +313,11 @@ def send_optimized_combined_recommendations(strategies_data, time_slot):
             trade_value = stock.get('trade_value', 0)
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
+            # ⭐ 修復：技術指標小標籤顯示
+            technical_indicators = get_technical_indicators_text(analysis)
+            if technical_indicators:
+                message += f"📊 技術指標: {' | '.join(technical_indicators)}\n"
+            
             # 法人買超資訊
             if 'foreign_net_buy' in analysis:
                 foreign_net = analysis['foreign_net_buy']
@@ -277,115 +326,6 @@ def send_optimized_combined_recommendations(strategies_data, time_slot):
                         message += f"🏦 外資買超: {format_institutional_flow(foreign_net)}\n"
                     else:
                         message += f"🏦 外資賣超: {format_institutional_flow(abs(foreign_net))}\n"
-            
-            # 推薦理由
-            message += f"📊 推薦理由: {stock['reason']}\n"
-            
-            # 目標價和止損價
-            target_price = stock.get('target_price')
-            stop_loss = stock.get('stop_loss')
-            if target_price:
-                message += f"🎯 目標價: {target_price} 元"
-            if stop_loss:
-                message += f" | 🛡️ 止損價: {stop_loss} 元"
-            message += "\n\n"
-    else:
-        message += "今日無短線推薦股票\n\n"
-    
-    # 長線推薦部分（重點優化）
-    message += "【💎 長線潛力 - 基本面優質股】\n\n"
-    if long_term_stocks:
-        for i, stock in enumerate(long_term_stocks, 1):
-            message += f"💎 {i}. {stock['code']} {stock['name']}\n"
-            
-            # 現價和漲跌幅
-            current_price = stock.get('current_price', 0)
-            analysis = stock.get('analysis', {})
-            change_percent = analysis.get('change_percent', 0)
-            
-            message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
-            
-            # === 基本面資訊區塊（重點顯示）===
-            message += "📊 基本面分析:\n"
-            
-            # 殖利率（重點）
-            if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
-                dividend_yield = analysis['dividend_yield']
-                dividend_years = analysis.get('dividend_consecutive_years', 0)
-                if dividend_yield > 5:
-                    message += f"   💸 高殖利率: {dividend_yield:.1f}%"
-                elif dividend_yield > 3:
-                    message += f"   💸 殖利率: {dividend_yield:.1f}%"
-                else:
-                    message += f"   💸 殖利率: {dividend_yield:.1f}%"
-                
-                if dividend_years > 5:
-                    message += f" (連續{dividend_years}年配息)\n"
-                else:
-                    message += "\n"
-            
-            # EPS成長（重點）
-            if 'eps_growth' in analysis and analysis['eps_growth'] > 0:
-                eps_growth = analysis['eps_growth']
-                if eps_growth > 20:
-                    message += f"   📈 EPS高成長: {eps_growth:.1f}% (獲利大幅提升)\n"
-                elif eps_growth > 10:
-                    message += f"   📈 EPS穩健成長: {eps_growth:.1f}%\n"
-                else:
-                    message += f"   📈 EPS成長: {eps_growth:.1f}%\n"
-            
-            # ROE和本益比
-            if 'roe' in analysis and analysis['roe'] > 0:
-                roe = analysis['roe']
-                pe_ratio = analysis.get('pe_ratio', 0)
-                if roe > 15:
-                    message += f"   🏆 ROE: {roe:.1f}% (獲利能力優秀)"
-                else:
-                    message += f"   🏆 ROE: {roe:.1f}%"
-                
-                if pe_ratio > 0 and pe_ratio < 20:
-                    message += f" | 本益比: {pe_ratio:.1f}倍 (估值合理)\n"
-                else:
-                    message += f" | 本益比: {pe_ratio:.1f}倍\n"
-            
-            # 營收成長
-            if 'revenue_growth' in analysis and analysis['revenue_growth'] > 8:
-                revenue_growth = analysis['revenue_growth']
-                message += f"   📊 營收成長: {revenue_growth:.1f}% (業務擴張)\n"
-            
-            # === 法人買賣區塊（重點顯示）===
-            message += "🏦 法人動向:\n"
-            
-            foreign_net = analysis.get('foreign_net_buy', 0)
-            trust_net = analysis.get('trust_net_buy', 0)
-            total_institutional = analysis.get('total_institutional', 0)
-            consecutive_days = analysis.get('consecutive_buy_days', 0)
-            
-            if total_institutional > 50000:
-                message += f"   🔥 三大法人大幅買超: {format_institutional_flow(total_institutional)}\n"
-            elif foreign_net > 10000:
-                message += f"   🌍 外資買超: {format_institutional_flow(foreign_net)}"
-                if trust_net > 5000:
-                    message += f" | 投信買超: {format_institutional_flow(trust_net)}\n"
-                else:
-                    message += "\n"
-            elif trust_net > 5000:
-                message += f"   🏢 投信買超: {format_institutional_flow(trust_net)}\n"
-            elif foreign_net > 0 or trust_net > 0:
-                if foreign_net > 0:
-                    message += f"   🌍 外資買超: {format_institutional_flow(foreign_net)}"
-                if trust_net > 0:
-                    message += f" | 投信買超: {format_institutional_flow(trust_net)}"
-                message += "\n"
-            else:
-                message += f"   ➖ 法人中性\n"
-            
-            if consecutive_days > 3:
-                message += f"   ⏰ 持續買超: {consecutive_days}天\n"
-            
-            # 成交量
-            trade_value = stock.get('trade_value', 0)
-            message += f"💵 成交金額: {format_number(trade_value)}\n"
             
             # 推薦理由
             message += f"📋 推薦理由: {stock['reason']}\n"
@@ -399,10 +339,128 @@ def send_optimized_combined_recommendations(strategies_data, time_slot):
                 message += f" | 🛡️ 止損價: {stop_loss} 元"
             message += "\n\n"
     else:
+        message += "今日無短線推薦股票\n\n"
+    
+    # 長線推薦部分（修復文字清晰度）
+    message += "【💎 長線潛力股 - 基本面優質】\n\n"
+    if long_term_stocks:
+        for i, stock in enumerate(long_term_stocks, 1):
+            message += f"💎 {i}. {stock['code']} {stock['name']}\n"
+            
+            # 現價和漲跌幅
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
+            
+            # ⭐ 修復：基本面資訊更清晰的顯示
+            message += "📊 基本面優勢:\n"
+            
+            fundamental_points = []
+            
+            # 殖利率（重點）
+            if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
+                dividend_yield = analysis['dividend_yield']
+                dividend_years = analysis.get('dividend_consecutive_years', 0)
+                if dividend_yield > 5:
+                    point = f"   💸 高殖利率 {dividend_yield:.1f}%"
+                elif dividend_yield > 3:
+                    point = f"   💸 穩定殖利率 {dividend_yield:.1f}%"
+                else:
+                    point = f"   💸 殖利率 {dividend_yield:.1f}%"
+                
+                if dividend_years > 5:
+                    point += f" (連續{dividend_years}年配息)"
+                fundamental_points.append(point)
+            
+            # EPS成長（重點）
+            if 'eps_growth' in analysis and analysis['eps_growth'] > 0:
+                eps_growth = analysis['eps_growth']
+                if eps_growth > 20:
+                    point = f"   📈 EPS高速成長 {eps_growth:.1f}%"
+                elif eps_growth > 10:
+                    point = f"   📈 EPS穩健成長 {eps_growth:.1f}%"
+                else:
+                    point = f"   📈 EPS成長 {eps_growth:.1f}%"
+                fundamental_points.append(point)
+            
+            # ROE和本益比
+            if 'roe' in analysis and analysis['roe'] > 0:
+                roe = analysis['roe']
+                pe_ratio = analysis.get('pe_ratio', 0)
+                if roe > 15:
+                    point = f"   🏆 ROE優異 {roe:.1f}%"
+                else:
+                    point = f"   🏆 ROE {roe:.1f}%"
+                
+                if pe_ratio > 0 and pe_ratio < 20:
+                    point += f" | 本益比合理 {pe_ratio:.1f}倍"
+                fundamental_points.append(point)
+            
+            # 營收成長
+            if 'revenue_growth' in analysis and analysis['revenue_growth'] > 8:
+                revenue_growth = analysis['revenue_growth']
+                point = f"   📊 營收成長 {revenue_growth:.1f}%"
+                fundamental_points.append(point)
+            
+            # 顯示基本面優勢
+            for point in fundamental_points:
+                message += point + "\n"
+            
+            # ⭐ 修復：法人動向更清晰的顯示
+            message += "🏦 法人動向:\n"
+            
+            foreign_net = analysis.get('foreign_net_buy', 0)
+            trust_net = analysis.get('trust_net_buy', 0)
+            total_institutional = analysis.get('total_institutional', 0)
+            consecutive_days = analysis.get('consecutive_buy_days', 0)
+            
+            institutional_points = []
+            
+            if total_institutional > 50000:
+                institutional_points.append(f"   🔥 三大法人大幅買超 {format_institutional_flow(total_institutional)}")
+            elif foreign_net > 10000:
+                institutional_points.append(f"   🌍 外資買超 {format_institutional_flow(foreign_net)}")
+                if trust_net > 5000:
+                    institutional_points.append(f"   🏢 投信買超 {format_institutional_flow(trust_net)}")
+            elif trust_net > 5000:
+                institutional_points.append(f"   🏢 投信買超 {format_institutional_flow(trust_net)}")
+            elif foreign_net > 0 or trust_net > 0:
+                if foreign_net > 0:
+                    institutional_points.append(f"   🌍 外資買超 {format_institutional_flow(foreign_net)}")
+                if trust_net > 0:
+                    institutional_points.append(f"   🏢 投信買超 {format_institutional_flow(trust_net)}")
+            else:
+                institutional_points.append("   ➖ 法人中性")
+            
+            if consecutive_days > 3:
+                institutional_points.append(f"   ⏰ 持續買超 {consecutive_days}天")
+            
+            # 顯示法人動向
+            for point in institutional_points:
+                message += point + "\n"
+            
+            # 成交量
+            trade_value = stock.get('trade_value', 0)
+            message += f"💵 成交金額: {format_number(trade_value)}\n"
+            
+            # 推薦理由
+            message += f"📋 投資亮點: {stock['reason']}\n"
+            
+            # 目標價和止損價
+            target_price = stock.get('target_price')
+            stop_loss = stock.get('stop_loss')
+            if target_price:
+                message += f"🎯 目標價: {target_price} 元"
+            if stop_loss:
+                message += f" | 🛡️ 止損價: {stop_loss} 元"
+            message += "\n\n"
+    else:
         message += "今日無長線推薦股票\n\n"
     
     # 極弱股警示部分
-    message += "【風險警示】\n\n"
+    message += "【⚠️ 風險警示】\n\n"
     if weak_stocks:
         for i, stock in enumerate(weak_stocks, 1):
             message += f"⚠️ {i}. {stock['code']} {stock['name']}\n"
@@ -419,30 +477,31 @@ def send_optimized_combined_recommendations(strategies_data, time_slot):
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
             # 警報原因
-            message += f"🚨 警報原因: {stock['alert_reason']}\n"
+            message += f"🚨 風險因子: {stock['alert_reason']}\n"
             
             # 風險提示
-            message += f"⚠️ 風險提示: 建議謹慎操作，嚴設停損\n\n"
+            message += f"⚠️ 操作建議: 謹慎操作，嚴設停損\n\n"
     else:
         message += "今日無極弱股警示\n\n"
     
-    # 投資提醒（優化版）
+    # 投資提醒（修復版）
     message += "【💡 投資提醒】\n"
-    message += "💎 長線推薦重點關注基本面：殖利率、EPS成長、法人動向\n"
+    message += "🔥 短線推薦：重視技術指標轉強、成交量放大\n"
+    message += "💎 長線推薦：重視殖利率、EPS成長、法人動向\n"
     message += "📊 建議長線投資者重視公司獲利能力和股息政策\n"
     message += "⚠️ 本報告僅供參考，不構成投資建議\n"
     message += "⚠️ 股市有風險，投資需謹慎\n"
     message += "⚠️ 建議設定停損點，控制投資風險\n\n"
     message += "祝您投資順利！💰"
     
-    # 生成HTML格式（針對長線優化）
-    html_body = generate_optimized_html_report(strategies_data, time_slot, today)
+    # 生成修復版HTML格式
+    html_body = generate_fixed_html_report(strategies_data, time_slot, today)
     
-    subject = f"【{time_slot}分析報告】💎 長線基本面優化版 - {today}"
+    subject = f"【{time_slot}分析報告】💎 修復版優化系統 - {today}"
     send_notification(message, subject, html_body)
 
-def generate_optimized_html_report(strategies_data, time_slot, date):
-    """生成優化版HTML報告（強化長線基本面顯示）"""
+def generate_fixed_html_report(strategies_data, time_slot, date):
+    """生成修復版HTML報告（修復技術指標顯示和長線文字清晰度）"""
     
     short_term_stocks = strategies_data.get("short_term", [])
     long_term_stocks = strategies_data.get("long_term", [])
@@ -456,7 +515,7 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
         <title>{time_slot}分析報告 - {date}</title>
         <style>
             body {{
-                font-family: 'Microsoft JhengHei', Arial, sans-serif;
+                font-family: 'Microsoft JhengHei', 'Segoe UI', Arial, sans-serif;
                 line-height: 1.6;
                 color: #333;
                 max-width: 900px;
@@ -487,6 +546,14 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
                 border-bottom: 2px solid #3498db;
                 padding-bottom: 5px;
             }}
+            .shortterm-title {{
+                border-bottom: 2px solid #e74c3c;
+                background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                margin-bottom: 15px;
+            }}
             .longterm-title {{
                 border-bottom: 2px solid #f39c12;
                 background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
@@ -501,6 +568,11 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
                 padding: 15px;
                 margin-bottom: 15px;
                 background: #fafbfc;
+            }}
+            .shortterm-card {{
+                border: 2px solid #e74c3c;
+                background: linear-gradient(135deg, #ffeaea 0%, #ffebee 100%);
+                box-shadow: 0 4px 15px rgba(231, 76, 60, 0.2);
             }}
             .longterm-card {{
                 border: 2px solid #f39c12;
@@ -525,20 +597,74 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
             .price-up {{ color: #e74c3c; }}
             .price-down {{ color: #27ae60; }}
             .price-flat {{ color: #95a5a6; }}
+            
+            /* ⭐ 修復：技術指標標籤樣式 */
+            .technical-indicators {{
+                background: #e8f4fd;
+                border-left: 4px solid #3498db;
+                padding: 10px;
+                margin: 10px 0;
+                border-radius: 0 5px 5px 0;
+            }}
+            .indicator-tag {{
+                display: inline-block;
+                background: #3498db;
+                color: white;
+                padding: 3px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                margin: 2px 4px 2px 0;
+                font-weight: bold;
+            }}
+            .rsi-tag {{ background: #9b59b6; }}
+            .macd-tag {{ background: #e67e22; }}
+            .ma-tag {{ background: #16a085; }}
+            .volume-tag {{ background: #f39c12; }}
+            .institutional-tag {{ background: #2ecc71; }}
+            
+            /* ⭐ 修復：基本面資訊更清晰的樣式 */
             .fundamental-section {{
                 background: #e8f5e8;
                 border-left: 4px solid #27ae60;
-                padding: 10px;
+                padding: 12px;
                 margin: 10px 0;
                 border-radius: 0 5px 5px 0;
             }}
+            .fundamental-title {{
+                font-weight: bold;
+                color: #27ae60;
+                margin-bottom: 8px;
+                font-size: 14px;
+            }}
+            .fundamental-item {{
+                margin: 6px 0;
+                display: flex;
+                align-items: center;
+                font-size: 13px;
+                line-height: 1.4;
+            }}
+            
             .institutional-section {{
                 background: #e3f2fd;
                 border-left: 4px solid #2196f3;
-                padding: 10px;
+                padding: 12px;
                 margin: 10px 0;
                 border-radius: 0 5px 5px 0;
             }}
+            .institutional-title {{
+                font-weight: bold;
+                color: #2196f3;
+                margin-bottom: 8px;
+                font-size: 14px;
+            }}
+            .institutional-item {{
+                margin: 6px 0;
+                display: flex;
+                align-items: center;
+                font-size: 13px;
+                line-height: 1.4;
+            }}
+            
             .info-row {{
                 margin: 5px 0;
                 display: flex;
@@ -567,9 +693,6 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
             .weak-stock {{
                 border-left: 4px solid #e74c3c;
             }}
-            .short-term {{
-                border-left: 4px solid #f39c12;
-            }}
             .warning {{
                 background-color: #ffeaa7;
                 border-left: 4px solid #fdcb6e;
@@ -590,15 +713,15 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
     <body>
         <div class="header">
             <h1>📈 {time_slot}分析報告</h1>
-            <p>{date} - 💎 長線基本面優化版</p>
+            <p>{date} - 💎 修復版優化系統</p>
         </div>
     """
     
-    # 短線推薦
+    # 短線推薦（修復技術指標顯示）
     if short_term_stocks:
         html += """
         <div class="section">
-            <div class="section-title">🔥 短線推薦</div>
+            <div class="shortterm-title">🔥 短線推薦</div>
         """
         for stock in short_term_stocks:
             current_price = stock.get('current_price', 0)
@@ -609,27 +732,56 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
             change_symbol = "+" if change_percent > 0 else ""
             
             html += f"""
-            <div class="stock-card short-term">
+            <div class="stock-card shortterm-card">
                 <div class="stock-header">
-                    <div class="stock-name">📈 {stock['code']} {stock['name']}</div>
+                    <div class="stock-name">🔥 {stock['code']} {stock['name']}</div>
                     <div class="stock-price {price_class}">
                         現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
                     </div>
                 </div>
+                
+                <!-- ⭐ 修復：技術指標標籤區塊 -->
+                <div class="technical-indicators">
+                    <div class="fundamental-title">📊 技術指標</div>
+                    <div>
+            """
+            
+            # 獲取技術指標標籤
+            technical_indicators = get_technical_indicators_text(analysis)
+            for indicator in technical_indicators:
+                # 根據指標類型設定不同樣式
+                tag_class = "indicator-tag"
+                if "RSI" in indicator:
+                    tag_class += " rsi-tag"
+                elif "MACD" in indicator:
+                    tag_class += " macd-tag"
+                elif "MA" in indicator or "均線" in indicator:
+                    tag_class += " ma-tag"
+                elif "量" in indicator:
+                    tag_class += " volume-tag"
+                elif "外資" in indicator:
+                    tag_class += " institutional-tag"
+                
+                html += f'<span class="{tag_class}">{indicator}</span>'
+            
+            html += """
+                    </div>
+                </div>
+                
                 <div class="stock-info">
                     <div class="info-row">
                         <span class="info-label">💵 成交金額:</span>
-                        {format_number(stock.get('trade_value', 0))}
+                        """ + format_number(stock.get('trade_value', 0)) + """
                     </div>
                     <div class="info-row">
-                        <span class="info-label">📊 推薦理由:</span>
-                        {stock['reason']}
+                        <span class="info-label">📋 推薦理由:</span>
+                        """ + stock['reason'] + """
                     </div>
                     <div class="info-row">
                         <span class="info-label">🎯 目標價:</span>
-                        {stock.get('target_price', 'N/A')} 元
+                        """ + str(stock.get('target_price', 'N/A')) + """ 元
                         <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
-                        {stock.get('stop_loss', 'N/A')} 元
+                        """ + str(stock.get('stop_loss', 'N/A')) + """ 元
                     </div>
                 </div>
             </div>
@@ -637,11 +789,11 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
         
         html += "</div>"
     
-    # 長線推薦（重點優化）
+    # 長線推薦（修復文字清晰度）
     if long_term_stocks:
         html += """
         <div class="section">
-            <div class="longterm-title">💎 長線潛力 - 基本面優質股</div>
+            <div class="longterm-title">💎 長線潛力股 - 基本面優質</div>
         """
         for stock in long_term_stocks:
             current_price = stock.get('current_price', 0)
@@ -660,59 +812,44 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
                     </div>
                 </div>
                 
-                <!-- 基本面分析區塊 -->
+                <!-- ⭐ 修復：基本面分析區塊更清晰 -->
                 <div class="fundamental-section">
-                    <h4 style="margin: 0 0 10px 0; color: #27ae60;">📊 基本面分析</h4>
+                    <div class="fundamental-title">📊 基本面優勢</div>
             """
             
-            # 殖利率顯示
+            # 殖利率顯示（更清晰）
             if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
                 dividend_yield = analysis['dividend_yield']
                 dividend_years = analysis.get('dividend_consecutive_years', 0)
                 
-                if dividend_yield > 5:
-                    yield_class = "excellent-metric"
-                elif dividend_yield > 3:
-                    yield_class = "highlight-metric"
-                else:
-                    yield_class = ""
+                yield_class = "excellent-metric" if dividend_yield > 5 else "highlight-metric" if dividend_yield > 3 else ""
                 
                 html += f"""
-                    <div class="info-row">
-                        <span class="info-label">💸 殖利率:</span>
-                        <span class="{yield_class}">{dividend_yield:.1f}%</span>
+                    <div class="fundamental-item">
+                        <span>💸 殖利率:</span>
+                        <span class="{yield_class}" style="margin-left: 8px;">{dividend_yield:.1f}%</span>
                 """
                 
                 if dividend_years > 5:
-                    html += f' <small>(連續{dividend_years}年配息)</small>'
+                    html += f' <small style="margin-left: 8px; color: #27ae60;">(連續{dividend_years}年配息)</small>'
                 
                 html += "</div>"
             
-            # EPS成長顯示
+            # EPS成長顯示（更清晰）
             if 'eps_growth' in analysis and analysis['eps_growth'] > 0:
                 eps_growth = analysis['eps_growth']
                 
-                if eps_growth > 20:
-                    eps_class = "excellent-metric"
-                elif eps_growth > 10:
-                    eps_class = "highlight-metric"
-                else:
-                    eps_class = ""
+                eps_class = "excellent-metric" if eps_growth > 20 else "highlight-metric" if eps_growth > 10 else ""
+                growth_desc = "高速成長" if eps_growth > 20 else "穩健成長" if eps_growth > 10 else "成長"
                 
                 html += f"""
-                    <div class="info-row">
-                        <span class="info-label">📈 EPS成長:</span>
-                        <span class="{eps_class}">{eps_growth:.1f}%</span>
+                    <div class="fundamental-item">
+                        <span>📈 EPS{growth_desc}:</span>
+                        <span class="{eps_class}" style="margin-left: 8px;">{eps_growth:.1f}%</span>
+                    </div>
                 """
-                
-                if eps_growth > 20:
-                    html += ' <small>(高速成長)</small>'
-                elif eps_growth > 10:
-                    html += ' <small>(穩健成長)</small>'
-                
-                html += "</div>"
             
-            # ROE和本益比
+            # ROE和本益比（更清晰）
             if 'roe' in analysis and analysis['roe'] > 0:
                 roe = analysis['roe']
                 pe_ratio = analysis.get('pe_ratio', 0)
@@ -721,33 +858,33 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
                 pe_class = "excellent-metric" if pe_ratio < 15 else "highlight-metric" if pe_ratio < 20 else ""
                 
                 html += f"""
-                    <div class="info-row">
-                        <span class="info-label">🏆 ROE:</span>
-                        <span class="{roe_class}">{roe:.1f}%</span>
-                        <span class="info-label" style="margin-left: 20px;">📊 本益比:</span>
-                        <span class="{pe_class}">{pe_ratio:.1f}倍</span>
+                    <div class="fundamental-item">
+                        <span>🏆 ROE:</span>
+                        <span class="{roe_class}" style="margin-left: 8px;">{roe:.1f}%</span>
+                        <span style="margin-left: 15px;">📊 本益比:</span>
+                        <span class="{pe_class}" style="margin-left: 8px;">{pe_ratio:.1f}倍</span>
                     </div>
                 """
             
-            # 營收成長
+            # 營收成長（更清晰）
             if 'revenue_growth' in analysis and analysis['revenue_growth'] > 8:
                 revenue_growth = analysis['revenue_growth']
                 revenue_class = "excellent-metric" if revenue_growth > 15 else "highlight-metric"
                 
                 html += f"""
-                    <div class="info-row">
-                        <span class="info-label">📊 營收成長:</span>
-                        <span class="{revenue_class}">{revenue_growth:.1f}%</span>
-                        <small>(業務擴張)</small>
+                    <div class="fundamental-item">
+                        <span>📊 營收成長:</span>
+                        <span class="{revenue_class}" style="margin-left: 8px;">{revenue_growth:.1f}%</span>
+                        <small style="margin-left: 8px; color: #27ae60;">(業務擴張)</small>
                     </div>
                 """
             
             html += "</div>"  # 結束基本面區塊
             
-            # 法人動向區塊
+            # ⭐ 修復：法人動向區塊更清晰
             html += """
                 <div class="institutional-section">
-                    <h4 style="margin: 0 0 10px 0; color: #2196f3;">🏦 法人動向</h4>
+                    <div class="institutional-title">🏦 法人動向</div>
             """
             
             foreign_net = analysis.get('foreign_net_buy', 0)
@@ -757,49 +894,49 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
             
             if total_institutional > 50000:
                 html += f"""
-                    <div class="info-row">
-                        <span class="info-label">🔥 三大法人:</span>
-                        <span class="excellent-metric">大幅買超 {format_institutional_flow(total_institutional)}</span>
+                    <div class="institutional-item">
+                        <span>🔥 三大法人大幅買超:</span>
+                        <span class="excellent-metric" style="margin-left: 8px;">{format_institutional_flow(total_institutional)}</span>
                     </div>
                 """
             else:
                 if foreign_net > 5000:
                     foreign_class = "excellent-metric" if foreign_net > 20000 else "highlight-metric"
                     html += f"""
-                        <div class="info-row">
-                            <span class="info-label">🌍 外資:</span>
-                            <span class="{foreign_class}">買超 {format_institutional_flow(foreign_net)}</span>
+                        <div class="institutional-item">
+                            <span>🌍 外資買超:</span>
+                            <span class="{foreign_class}" style="margin-left: 8px;">{format_institutional_flow(foreign_net)}</span>
                         </div>
                     """
                 elif foreign_net < -5000:
                     html += f"""
-                        <div class="info-row">
-                            <span class="info-label">🌍 外資:</span>
-                            <span style="color: #e74c3c;">賣超 {format_institutional_flow(abs(foreign_net))}</span>
+                        <div class="institutional-item">
+                            <span>🌍 外資賣超:</span>
+                            <span style="color: #e74c3c; margin-left: 8px;">{format_institutional_flow(abs(foreign_net))}</span>
                         </div>
                     """
                 
                 if trust_net > 3000:
                     trust_class = "excellent-metric" if trust_net > 10000 else "highlight-metric"
                     html += f"""
-                        <div class="info-row">
-                            <span class="info-label">🏢 投信:</span>
-                            <span class="{trust_class}">買超 {format_institutional_flow(trust_net)}</span>
+                        <div class="institutional-item">
+                            <span>🏢 投信買超:</span>
+                            <span class="{trust_class}" style="margin-left: 8px;">{format_institutional_flow(trust_net)}</span>
                         </div>
                     """
                 elif trust_net < -3000:
                     html += f"""
-                        <div class="info-row">
-                            <span class="info-label">🏢 投信:</span>
-                            <span style="color: #e74c3c;">賣超 {format_institutional_flow(abs(trust_net))}</span>
+                        <div class="institutional-item">
+                            <span>🏢 投信賣超:</span>
+                            <span style="color: #e74c3c; margin-left: 8px;">{format_institutional_flow(abs(trust_net))}</span>
                         </div>
                     """
             
             if consecutive_days > 3:
                 html += f"""
-                    <div class="info-row">
-                        <span class="info-label">⏰ 持續買超:</span>
-                        <span class="highlight-metric">{consecutive_days}天</span>
+                    <div class="institutional-item">
+                        <span>⏰ 持續買超:</span>
+                        <span class="highlight-metric" style="margin-left: 8px;">{consecutive_days}天</span>
                     </div>
                 """
             
@@ -813,7 +950,7 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
                         {format_number(stock.get('trade_value', 0))}
                     </div>
                     <div class="info-row">
-                        <span class="info-label">📋 推薦理由:</span>
+                        <span class="info-label">📋 投資亮點:</span>
                         {stock['reason']}
                     </div>
                     <div class="info-row">
@@ -853,12 +990,12 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
                         {format_number(stock.get('trade_value', 0))}
                     </div>
                     <div class="info-row">
-                        <span class="info-label">🚨 警報原因:</span>
+                        <span class="info-label">🚨 風險因子:</span>
                         {stock['alert_reason']}
                     </div>
                     <div class="info-row">
-                        <span class="info-label">⚠️ 風險提示:</span>
-                        建議謹慎操作，嚴設停損
+                        <span class="info-label">⚠️ 操作建議:</span>
+                        謹慎操作，嚴設停損
                     </div>
                 </div>
             </div>
@@ -866,13 +1003,20 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
         
         html += "</div>"
     
-    # 投資提醒（優化版）
+    # 投資提醒（修復版）
     html += """
         <div class="warning">
             <h3>💡 投資提醒</h3>
-            <p><strong>💎 長線投資重點：</strong></p>
+            <p><strong>🔥 短線推薦重點：</strong></p>
             <ul>
-                <li>📊 殖利率 > 3% 提供穩定現金流</li>
+                <li>📊 重視技術指標轉強（RSI、MACD、均線）</li>
+                <li>📈 關注成交量放大配合價格上漲</li>
+                <li>🏦 法人買超提供資金動能支撐</li>
+                <li>⏰ 適合短期操作，嚴設停損</li>
+            </ul>
+            <p><strong>💎 長線推薦重點：</strong></p>
+            <ul>
+                <li>💸 殖利率 > 3% 提供穩定現金流</li>
                 <li>📈 EPS成長 > 10% 代表獲利持續改善</li>
                 <li>🏦 法人買超顯示專業投資人看好</li>
                 <li>🏆 ROE > 15% 表示獲利能力優秀</li>
@@ -889,7 +1033,7 @@ def generate_optimized_html_report(strategies_data, time_slot, date):
         
         <div class="footer">
             <p>此電子郵件由台股分析系統自動產生於 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p>💎 長線基本面優化版 - 專注殖利率、EPS成長、法人動向</p>
+            <p>🔧 修復版優化系統 - 技術指標標籤顯示修復 + 長線文字清晰度優化</p>
             <p>祝您投資順利！💰</p>
         </div>
     </body>
@@ -913,7 +1057,7 @@ def send_heartbeat():
     
     # 發送心跳通知
     timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
-    message = f"🔔 優化版系統心跳檢測通知\n\n"
+    message = f"🔔 修復版系統心跳檢測通知\n\n"
     message += f"⏰ 檢測時間: {timestamp}\n\n"
     
     # 系統狀態
@@ -938,15 +1082,16 @@ def send_heartbeat():
     message += f"  • 未送達通知數: {STATUS['undelivered_count']}\n"
     message += f"  • 系統運行正常: {'是' if email_status['failure_count'] < 5 else '否'}\n\n"
     
-    message += "💎 優化版功能:\n"
-    message += "  • 長線推薦強化基本面分析\n"
-    message += "  • 重視殖利率、EPS成長、法人動向\n"
-    message += "  • 提供更詳細的投資參考資訊\n\n"
+    message += "🔧 修復版功能:\n"
+    message += "  • ✅ 短線推薦技術指標標籤顯示修復\n"
+    message += "  • ✅ 長線推薦基本面文字清晰度優化\n"
+    message += "  • 💎 重視殖利率、EPS成長、法人動向\n"
+    message += "  • 📊 技術指標小標籤完整顯示\n\n"
     
-    message += "💡 如果您收到此訊息，表示優化版通知系統運作正常！"
+    message += "💡 如果您收到此訊息，表示修復版通知系統運作正常！"
     
     # 發送心跳通知
-    success = send_notification(message, "🔔 優化版系統心跳檢測")
+    success = send_notification(message, "🔔 修復版系統心跳檢測")
     
     # 更新心跳時間
     if success:
@@ -960,8 +1105,8 @@ def is_notification_available():
            (FILE_BACKUP['enabled'] and STATUS['file']['available'])
 
 def init():
-    """初始化優化版通知系統"""
-    log_event("初始化優化版通知系統")
+    """初始化修復版通知系統"""
+    log_event("初始化修復版通知系統")
     
     # 檢查郵件配置
     if EMAIL_CONFIG['enabled']:
@@ -986,8 +1131,10 @@ def init():
             log_event(f"文件備份目錄創建失敗: {e}", 'error')
             STATUS['file']['available'] = False
     
-    log_event("優化版通知系統初始化完成")
-    log_event("💎 長線推薦將重點顯示：殖利率、EPS成長、法人買超資訊")
+    log_event("修復版通知系統初始化完成")
+    log_event("🔧 修復內容:")
+    log_event("  ✅ 短線推薦技術指標標籤顯示修復")
+    log_event("  ✅ 長線推薦基本面文字清晰度優化")
 
 # 向下相容的函數別名
 send_combined_recommendations = send_optimized_combined_recommendations
@@ -998,26 +1145,51 @@ if __name__ == "__main__":
     
     # 執行測試
     print("=" * 60)
-    print("💎 優化版通知系統測試 - 強化長線基本面顯示")
+    print("🔧 修復版通知系統測試")
     print("=" * 60)
     
-    # 創建測試數據
+    # 創建測試數據，包含豐富的技術指標和基本面資料
     test_data = {
         "short_term": [
             {
                 "code": "2330",
                 "name": "台積電",
                 "current_price": 638.5,
-                "reason": "技術面轉強，MACD金叉，外資買超支撐",
+                "reason": "技術面轉強，MACD金叉，RSI健康回升，外資買超支撐",
                 "target_price": 670.0,
                 "stop_loss": 620.0,
                 "trade_value": 14730000000,
                 "analysis": {
                     "change_percent": 2.35,
+                    "rsi": 58.5,
+                    "volume_ratio": 2.3,
                     "foreign_net_buy": 25000,
                     "technical_signals": {
                         "rsi_healthy": True,
-                        "macd_bullish": True
+                        "macd_bullish": True,
+                        "macd_golden_cross": True,
+                        "ma20_bullish": True,
+                        "ma_golden_cross": True
+                    }
+                }
+            },
+            {
+                "code": "2454",
+                "name": "聯發科",
+                "current_price": 825.0,
+                "reason": "放量突破，RSI超賣回升，MACD轉強",
+                "target_price": 880.0,
+                "stop_loss": 800.0,
+                "trade_value": 8950000000,
+                "analysis": {
+                    "change_percent": 4.12,
+                    "rsi": 45.2,
+                    "volume_ratio": 3.1,
+                    "foreign_net_buy": 15000,
+                    "technical_signals": {
+                        "rsi_healthy": True,
+                        "macd_bullish": True,
+                        "ma20_bullish": True
                     }
                 }
             }
@@ -1049,7 +1221,7 @@ if __name__ == "__main__":
                 "code": "2882",
                 "name": "國泰金",
                 "current_price": 58.3,
-                "reason": "穩定殖利率6.2%，連續配息18年，外資持續買超",
+                "reason": "穩定殖利率6.2%，連續配息18年，ROE良好13.8%，外資持續買超",
                 "target_price": 65.0,
                 "stop_loss": 55.0,
                 "trade_value": 2100000000,
@@ -1061,10 +1233,32 @@ if __name__ == "__main__":
                     "roe": 13.8,
                     "revenue_growth": 6.7,
                     "dividend_consecutive_years": 18,
-                    "foreign_net_buy": 12000,
+                    "foreign_net_buy": 16000,
                     "trust_net_buy": 3000,
-                    "total_institutional": 16000,
+                    "total_institutional": 20000,
                     "consecutive_buy_days": 4
+                }
+            },
+            {
+                "code": "1301",
+                "name": "台塑",
+                "current_price": 115.8,
+                "reason": "殖利率5.1%，連續20年配息，EPS成長12.7%，ROE優異14.2%",
+                "target_price": 125.0,
+                "stop_loss": 108.0,
+                "trade_value": 1800000000,
+                "analysis": {
+                    "change_percent": -0.3,
+                    "dividend_yield": 5.1,
+                    "eps_growth": 12.7,
+                    "pe_ratio": 12.8,
+                    "roe": 14.2,
+                    "revenue_growth": 9.3,
+                    "dividend_consecutive_years": 20,
+                    "foreign_net_buy": 8000,
+                    "trust_net_buy": 2000,
+                    "total_institutional": 11000,
+                    "consecutive_buy_days": 3
                 }
             }
         ],
@@ -1072,22 +1266,23 @@ if __name__ == "__main__":
     }
     
     # 發送測試通知
-    send_optimized_combined_recommendations(test_data, "測試分析")
+    send_optimized_combined_recommendations(test_data, "修復版功能測試")
     
-    print("\n💎 優化版通知已發送！")
-    print("\n📋 請檢查您的郵箱，確認以下長線基本面資訊:")
-    print("1. ✅ 殖利率顯示是否突出（>5%會特別標示）")
-    print("2. 📈 EPS成長率是否清楚標示（>20%會特別標示）")
-    print("3. 🏦 法人買賣超金額是否詳細顯示")
-    print("4. 🏆 ROE和本益比是否清楚標示")
-    print("5. ⏰ 連續配息年數是否顯示")
-    print("6. 📊 營收成長是否顯示")
-    print("7. 🎨 HTML格式的基本面區塊是否美觀")
-    print("8. 💎 長線推薦標題是否突出顯示")
+    print("\n🔧 修復版通知已發送！")
+    print("\n📋 請檢查您的郵箱，確認以下修復內容:")
+    print("🔥 短線推薦部分:")
+    print("  ✅ 技術指標小標籤是否完整顯示")
+    print("  📊 RSI、MACD、均線、成交量標籤是否清楚")
+    print("  🎨 標籤顏色是否區分（RSI紫色、MACD橙色、均線青色等）")
+    print("💎 長線推薦部分:")
+    print("  ✅ 基本面資訊文字是否清晰易讀")
+    print("  📊 殖利率、EPS成長、ROE是否突出顯示")
+    print("  🏦 法人買賣資訊是否詳細清楚")
+    print("  📈 數值是否有適當的顏色標示（綠色優秀、黃色良好）")
+    print("🌐 HTML格式:")
+    print("  ✅ 整體排版是否美觀")
+    print("  📱 在手機上是否正常顯示")
     
-    print("\n=" * 60)
-    print("💡 使用說明:")
-    print("1. 將此模組匯入到 optimized_stock_bot 中")
-    print("2. 替換原有的 notifier 模組")
-    print("3. 享受更詳細的長線基本面分析報告")
-    print("=" * 60)
+    print("\n🎯 修復重點:")
+    print("1. ✅ 短線推薦技術指標標籤完整顯示")
+    print("2. ✅ 長線推薦基本面文字清晰度大幅提升")
