@@ -72,13 +72,20 @@ jobs:
         EMAIL_SMTP_PORT: 587
       run: |
         echo "🔧 測試通知系統..."
-        python -c "
+        python test_notification_simple.py
+        
+    - name: 創建簡單通知測試檔案
+      run: |
+        cat > test_notification_simple.py << 'EOF'
         import os
+        
+        # 檢查環境變數
         print('檢查環境變數:')
         print('EMAIL_SENDER:', '✅' if os.getenv('EMAIL_SENDER') else '❌')
-        print('EMAIL_PASSWORD:', '✅' if os.getenv('EMAIL_PASSWORD') else '❌')
+        print('EMAIL_PASSWORD:', '✅' if os.getenv('EMAIL_PASSWORD') else '❌') 
         print('EMAIL_RECEIVER:', '✅' if os.getenv('EMAIL_RECEIVER') else '❌')
         
+        # 嘗試導入並測試通知系統
         try:
             import notifier
             notifier.init()
@@ -88,7 +95,7 @@ jobs:
                 print('⚠️ 通知系統配置不完整')
         except Exception as e:
             print(f'⚠️ 通知系統測試失敗: {e}')
-        "
+        EOF
         
     - name: 執行分析
       env:
@@ -104,28 +111,33 @@ jobs:
         
         if [ "$TYPE" = "heartbeat" ]; then
           echo "執行心跳檢測..."
-          python -c "
-          import notifier
-          try:
-              notifier.init()
-              result = notifier.send_heartbeat()
-              if result:
-                  print('✅ 心跳檢測完成，通知已發送')
-              else:
-                  print('⚠️ 心跳檢測完成，但通知發送失敗')
-          except Exception as e:
-              print(f'❌ 心跳檢測失敗: {e}')
-          "
+          python heartbeat_test.py
         else
           echo "執行股票分析..."
           python enhanced_stock_bot.py $TYPE
         fi
         
+    - name: 創建心跳測試檔案
+      run: |
+        cat > heartbeat_test.py << 'EOF'
+        import notifier
+        
+        try:
+            notifier.init()
+            result = notifier.send_heartbeat()
+            if result:
+                print('✅ 心跳檢測完成，通知已發送')
+            else:
+                print('⚠️ 心跳檢測完成，但通知發送失敗')
+        except Exception as e:
+            print(f'❌ 心跳檢測失敗: {e}')
+        EOF
+        
     - name: 創建日誌目錄
       if: always()
       run: |
         mkdir -p logs
-        echo "$(date): 執行完成" > logs/execution.log
+        echo "$(date): 執行完成 - ${{ steps.run_type.outputs.type }}" > logs/execution.log
         
     - name: 上傳日誌
       if: always()
@@ -134,7 +146,7 @@ jobs:
         name: logs-${{ steps.run_type.outputs.type }}-${{ github.run_number }}
         path: logs/
         retention-days: 7
-        
+
   # 錯誤通知作業
   error-notification:
     runs-on: ubuntu-latest
@@ -142,13 +154,9 @@ jobs:
     if: failure()
     
     steps:
-    - name: 發送錯誤通知
-      env:
-        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+    - name: 創建錯誤通知腳本
       run: |
-        python3 -c "
+        cat > send_error_notification.py << 'EOF'
         import os
         import smtplib
         from datetime import datetime
@@ -164,20 +172,20 @@ jobs:
                 print('❌ 缺少郵件配置，跳過錯誤通知')
                 return False
             
-            message = f'''❌ 台股分析機器人執行失敗
+            message = f"""❌ 台股分析機器人執行失敗
 
-⏰ 失敗時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-🔗 查看詳情: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                    ⏰ 失敗時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                    🔗 查看詳情: https://github.com/{{ repository }}/actions/runs/{{ run_id }}
 
-請檢查 GitHub Actions 日誌了解詳細錯誤資訊。
+                    請檢查 GitHub Actions 日誌了解詳細錯誤資訊。
 
-可能的問題：
-1. 郵件認證設定問題
-2. 股票數據 API 連接失敗
-3. 程式執行異常
+                    可能的問題：
+                    1. 郵件認證設定問題  
+                    2. 股票數據 API 連接失敗
+                    3. 程式執行異常
 
-建議檢查 Secrets 設定和程式日誌。
-            '''
+                    建議檢查 Secrets 設定和程式日誌。
+                    """
             
             try:
                 msg = MIMEText(message, 'plain', 'utf-8')
@@ -198,5 +206,17 @@ jobs:
                 print(f'❌ 發送錯誤通知失敗: {e}')
                 return False
 
-        send_error_notification()
-        "
+        if __name__ == "__main__":
+            send_error_notification()
+        EOF
+        
+    - name: 發送錯誤通知
+      env:
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+      run: |
+        # 替換模板變數
+        sed -i 's/{{ repository }}/${{ github.repository }}/g' send_error_notification.py
+        sed -i 's/{{ run_id }}/${{ github.run_id }}/g' send_error_notification.py
+        python send_error_notification.py
