@@ -8,7 +8,13 @@ on:
     - cron: '30 4 * * 1-5'   # 12:30 午間掃描
     - cron: '0 7 * * 1-5'    # 15:00 盤後掃描
     - cron: '0 9 * * 5'      # 17:00 週末總結（僅週五）
-  
+ 
+  - name: 檢查語法
+  run: |
+    python -m py_compile enhanced_stock_bot.py
+    python -m py_compile notifier.py
+    python -m py_compile twse_data_fetcher.py
+    
   workflow_dispatch:
     inputs:
       run_type:
