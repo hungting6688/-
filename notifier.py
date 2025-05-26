@@ -1,6 +1,7 @@
 """
 enhanced_notifier_fixed.py - 修復版通知系統
 解決Gmail認證問題並增加現價和漲跌百分比顯示
+增強長線推薦：重點顯示EPS、法人買超、殖利率資訊
 """
 import os
 import time
@@ -85,6 +86,23 @@ def format_price_change(change_percent):
         return f"📉 {change_percent:.2f}%"
     else:
         return "➖ 0.00%"
+
+def format_foreign_net_buy(foreign_net):
+    """格式化外資買賣超顯示"""
+    if abs(foreign_net) < 1000:  # 小於1000萬不顯示
+        return ""
+    
+    amount_yi = abs(foreign_net) / 10000  # 轉換為億
+    if foreign_net > 0:
+        if amount_yi >= 1:
+            return f"🏦 外資買超: {amount_yi:.1f}億"
+        else:
+            return f"🏦 外資買超: {abs(foreign_net)/1000:.0f}千萬"
+    else:
+        if amount_yi >= 1:
+            return f"🏦 外資賣超: {amount_yi:.1f}億"
+        else:
+            return f"🏦 外資賣超: {abs(foreign_net)/1000:.0f}千萬"
 
 def check_gmail_app_password():
     """檢查Gmail應用程式密碼設定"""
@@ -261,7 +279,7 @@ def save_notification_to_file(message, subject, html_body=None, urgent=False):
 
 def send_combined_recommendations(strategies_data, time_slot):
     """
-    發送包含三種策略的股票推薦通知（增強版 - 包含現價和漲跌百分比）
+    發送包含三種策略的股票推薦通知（增強版 - 重點顯示長線基本面資訊）
     """
     short_term_stocks = strategies_data.get("short_term", [])
     long_term_stocks = strategies_data.get("long_term", [])
@@ -277,8 +295,8 @@ def send_combined_recommendations(strategies_data, time_slot):
     today = datetime.now().strftime("%Y/%m/%d")
     message = f"📈 {today} {time_slot}分析報告\n\n"
     
-    # 短線推薦部分（增強版 - 包含現價和漲跌百分比）
-    message += "【短線推薦】\n\n"
+    # 短線推薦部分（技術面為主）
+    message += "【短線推薦】（技術面主導）\n\n"
     if short_term_stocks:
         for i, stock in enumerate(short_term_stocks, 1):
             message += f"📈 {i}. {stock['code']} {stock['name']}\n"
@@ -295,13 +313,9 @@ def send_combined_recommendations(strategies_data, time_slot):
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
             # 法人買超資訊
-            if 'foreign_net_buy' in analysis:
-                foreign_net = analysis['foreign_net_buy']
-                if abs(foreign_net) > 1000:  # 超過1000萬才顯示
-                    if foreign_net > 0:
-                        message += f"🏦 外資買超: {format_number(foreign_net*10000)} 元\n"
-                    else:
-                        message += f"🏦 外資賣超: {format_number(abs(foreign_net)*10000)} 元\n"
+            foreign_info = format_foreign_net_buy(analysis.get('foreign_net_buy', 0))
+            if foreign_info:
+                message += f"{foreign_info}\n"
             
             # 推薦理由
             message += f"📊 推薦理由: {stock['reason']}\n"
@@ -332,11 +346,11 @@ def send_combined_recommendations(strategies_data, time_slot):
     else:
         message += "今日無短線推薦股票\n\n"
     
-    # 長線推薦部分（增強版）
-    message += "【長線潛力】\n\n"
+    # 長線推薦部分（基本面為主） - 重點增強
+    message += "【長線潛力】（基本面主導）\n\n"
     if long_term_stocks:
         for i, stock in enumerate(long_term_stocks, 1):
-            message += f"📊 {i}. {stock['code']} {stock['name']}\n"
+            message += f"💎 {i}. {stock['code']} {stock['name']}\n"
             
             # 現價和漲跌幅
             current_price = stock.get('current_price', 0)
@@ -349,13 +363,87 @@ def send_combined_recommendations(strategies_data, time_slot):
             trade_value = stock.get('trade_value', 0)
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
-            # 基本面資訊
-            if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
-                message += f"💸 殖利率: {analysis['dividend_yield']:.1f}%\n"
-            if 'pe_ratio' in analysis and analysis['pe_ratio'] > 0:
-                message += f"📊 本益比: {analysis['pe_ratio']:.1f}\n"
-            if 'eps_growth' in analysis and analysis['eps_growth'] > 0:
-                message += f"📈 EPS成長: {analysis['eps_growth']:.1f}%\n"
+            # 重點：基本面資訊
+            fundamental_info = []
+            
+            # 殖利率資訊
+            dividend_yield = analysis.get('dividend_yield', 0)
+            if dividend_yield > 0:
+                if dividend_yield > 5:
+                    fundamental_info.append(f"💰 高殖利率: {dividend_yield:.1f}%")
+                elif dividend_yield > 3:
+                    fundamental_info.append(f"💰 殖利率: {dividend_yield:.1f}%")
+                else:
+                    fundamental_info.append(f"💰 殖利率: {dividend_yield:.1f}%")
+            
+            # EPS成長資訊
+            eps_growth = analysis.get('eps_growth', 0)
+            if eps_growth > 0:
+                if eps_growth > 15:
+                    fundamental_info.append(f"📈 EPS高成長: {eps_growth:.1f}%")
+                elif eps_growth > 10:
+                    fundamental_info.append(f"📈 EPS成長: {eps_growth:.1f}%")
+                elif eps_growth > 5:
+                    fundamental_info.append(f"📈 EPS穩定成長: {eps_growth:.1f}%")
+            
+            # ROE資訊
+            roe = analysis.get('roe', 0)
+            if roe > 15:
+                fundamental_info.append(f"🏆 ROE優異: {roe:.1f}%")
+            elif roe > 10:
+                fundamental_info.append(f"🏆 ROE良好: {roe:.1f}%")
+            
+            # 本益比資訊
+            pe_ratio = analysis.get('pe_ratio', 0)
+            if 0 < pe_ratio < 15:
+                fundamental_info.append(f"📊 本益比合理: {pe_ratio:.1f}倍")
+            elif pe_ratio > 0:
+                fundamental_info.append(f"📊 本益比: {pe_ratio:.1f}倍")
+            
+            # 顯示基本面資訊
+            if fundamental_info:
+                message += f"📋 基本面: {' | '.join(fundamental_info)}\n"
+            
+            # 法人買超資訊 - 加強顯示
+            foreign_net = analysis.get('foreign_net_buy', 0)
+            trust_net = analysis.get('trust_net_buy', 0)
+            consecutive_days = analysis.get('consecutive_buy_days', 0)
+            
+            institutional_info = []
+            
+            # 外資買超
+            if abs(foreign_net) >= 1000:  # 大於1000萬才顯示
+                foreign_info = format_foreign_net_buy(foreign_net)
+                if foreign_info:
+                    institutional_info.append(foreign_info.replace('🏦 ', ''))
+            
+            # 投信買超
+            if trust_net > 5000:  # 5000萬以上
+                trust_amount = trust_net / 10000
+                if trust_amount >= 1:
+                    institutional_info.append(f"投信買超: {trust_amount:.1f}億")
+                else:
+                    institutional_info.append(f"投信買超: {trust_net/1000:.0f}千萬")
+            elif trust_net < -5000:
+                trust_amount = abs(trust_net) / 10000
+                if trust_amount >= 1:
+                    institutional_info.append(f"投信賣超: {trust_amount:.1f}億")
+                else:
+                    institutional_info.append(f"投信賣超: {abs(trust_net)/1000:.0f}千萬")
+            
+            # 連續買超天數
+            if consecutive_days >= 3:
+                institutional_info.append(f"連續買超{consecutive_days}天")
+            elif consecutive_days <= -3:
+                institutional_info.append(f"連續賣超{abs(consecutive_days)}天")
+            
+            if institutional_info:
+                message += f"🏦 法人動向: {' | '.join(institutional_info)}\n"
+            
+            # 長線評分（如果有的話）
+            long_term_score = stock.get('long_term_score', 0)
+            if long_term_score > 0:
+                message += f"⭐ 長線評分: {long_term_score:.1f}分\n"
             
             # 推薦理由
             message += f"📋 推薦理由: {stock['reason']}\n"
@@ -388,6 +476,11 @@ def send_combined_recommendations(strategies_data, time_slot):
             trade_value = stock.get('trade_value', 0)
             message += f"💵 成交金額: {format_number(trade_value)}\n"
             
+            # 法人賣超資訊
+            foreign_info = format_foreign_net_buy(analysis.get('foreign_net_buy', 0))
+            if foreign_info and '賣超' in foreign_info:
+                message += f"{foreign_info}\n"
+            
             # 警報原因
             message += f"🚨 警報原因: {stock['alert_reason']}\n"
             
@@ -400,6 +493,7 @@ def send_combined_recommendations(strategies_data, time_slot):
     message += "【投資提醒】\n"
     message += "⚠️ 本報告僅供參考，不構成投資建議\n"
     message += "⚠️ 股市有風險，投資需謹慎\n"
+    message += "⚠️ 長線投資重視基本面，短線操作注重技術面\n"
     message += "⚠️ 建議設定停損點，控制投資風險\n\n"
     message += "祝您投資順利！💰"
     
@@ -410,451 +504,8 @@ def send_combined_recommendations(strategies_data, time_slot):
     send_notification(message, subject, html_body)
 
 def generate_enhanced_html_report(strategies_data, time_slot, date):
-    """生成增強版HTML報告（包含現價和漲跌百分比）"""
+    """生成增強版HTML報告（重點顯示長線基本面資訊）"""
     
     short_term_stocks = strategies_data.get("short_term", [])
     long_term_stocks = strategies_data.get("long_term", [])
     weak_stocks = strategies_data.get("weak_stocks", [])
-    
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>{time_slot}分析報告 - {date}</title>
-        <style>
-            body {{
-                font-family: 'Microsoft JhengHei', Arial, sans-serif;
-                line-height: 1.6;
-                color: #333;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-                background-color: #f8f9fa;
-            }}
-            .header {{
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                padding: 20px;
-                border-radius: 10px;
-                margin-bottom: 20px;
-                text-align: center;
-            }}
-            .section {{
-                background: white;
-                border-radius: 10px;
-                padding: 20px;
-                margin-bottom: 20px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }}
-            .section-title {{
-                color: #2c3e50;
-                font-size: 18px;
-                font-weight: bold;
-                margin-bottom: 15px;
-                border-bottom: 2px solid #3498db;
-                padding-bottom: 5px;
-            }}
-            .stock-card {{
-                border: 1px solid #e1e5e9;
-                border-radius: 8px;
-                padding: 15px;
-                margin-bottom: 15px;
-                background: #fafbfc;
-            }}
-            .stock-header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 10px;
-            }}
-            .stock-name {{
-                font-size: 16px;
-                font-weight: bold;
-                color: #2c3e50;
-            }}
-            .stock-price {{
-                font-size: 14px;
-                font-weight: bold;
-            }}
-            .price-up {{ color: #e74c3c; }}
-            .price-down {{ color: #27ae60; }}
-            .price-flat {{ color: #95a5a6; }}
-            .stock-info {{
-                margin-top: 10px;
-                font-size: 14px;
-            }}
-            .info-row {{
-                margin: 5px 0;
-                display: flex;
-                align-items: center;
-            }}
-            .info-label {{
-                color: #7f8c8d;
-                margin-right: 8px;
-                min-width: 80px;
-            }}
-            .indicators {{
-                display: flex;
-                gap: 8px;
-                flex-wrap: wrap;
-                margin-top: 10px;
-            }}
-            .indicator-tag {{
-                background-color: #3498db;
-                color: white;
-                padding: 3px 8px;
-                border-radius: 12px;
-                font-size: 12px;
-                font-weight: 500;
-            }}
-            .weak-stock {{
-                border-left: 4px solid #e74c3c;
-            }}
-            .short-term {{
-                border-left: 4px solid #f39c12;
-            }}
-            .long-term {{
-                border-left: 4px solid #27ae60;
-            }}
-            .warning {{
-                background-color: #ffeaa7;
-                border-left: 4px solid #fdcb6e;
-                padding: 15px;
-                margin: 20px 0;
-                border-radius: 5px;
-            }}
-            .footer {{
-                text-align: center;
-                color: #7f8c8d;
-                font-size: 12px;
-                margin-top: 30px;
-                padding-top: 20px;
-                border-top: 1px solid #ecf0f1;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>📈 {time_slot}分析報告</h1>
-            <p>{date}</p>
-        </div>
-    """
-    
-    # 短線推薦
-    if short_term_stocks:
-        html += """
-        <div class="section">
-            <div class="section-title">🔥 短線推薦</div>
-        """
-        for stock in short_term_stocks:
-            current_price = stock.get('current_price', 0)
-            analysis = stock.get('analysis', {})
-            change_percent = analysis.get('change_percent', 0)
-            
-            price_class = "price-up" if change_percent > 0 else "price-down" if change_percent < 0 else "price-flat"
-            change_symbol = "+" if change_percent > 0 else ""
-            
-            html += f"""
-            <div class="stock-card short-term">
-                <div class="stock-header">
-                    <div class="stock-name">📈 {stock['code']} {stock['name']}</div>
-                    <div class="stock-price {price_class}">
-                        現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
-                    </div>
-                </div>
-                <div class="stock-info">
-                    <div class="info-row">
-                        <span class="info-label">💵 成交金額:</span>
-                        {format_number(stock.get('trade_value', 0))}
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">📊 推薦理由:</span>
-                        {stock['reason']}
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">🎯 目標價:</span>
-                        {stock.get('target_price', 'N/A')} 元
-                        <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
-                        {stock.get('stop_loss', 'N/A')} 元
-                    </div>
-            """
-            
-            # 技術指標
-            if 'technical_signals' in analysis:
-                signals = analysis['technical_signals']
-                html += '<div class="indicators">'
-                if signals.get('rsi_healthy'):
-                    html += '<span class="indicator-tag">RSI健康</span>'
-                if signals.get('macd_bullish'):
-                    html += '<span class="indicator-tag">MACD轉強</span>'
-                if signals.get('ma20_bullish'):
-                    html += '<span class="indicator-tag">站穩均線</span>'
-                html += '</div>'
-            
-            html += """
-                </div>
-            </div>
-            """
-        
-        html += "</div>"
-    
-    # 長線推薦
-    if long_term_stocks:
-        html += """
-        <div class="section">
-            <div class="section-title">📊 長線潛力</div>
-        """
-        for stock in long_term_stocks:
-            current_price = stock.get('current_price', 0)
-            analysis = stock.get('analysis', {})
-            change_percent = analysis.get('change_percent', 0)
-            
-            price_class = "price-up" if change_percent > 0 else "price-down" if change_percent < 0 else "price-flat"
-            change_symbol = "+" if change_percent > 0 else ""
-            
-            html += f"""
-            <div class="stock-card long-term">
-                <div class="stock-header">
-                    <div class="stock-name">📊 {stock['code']} {stock['name']}</div>
-                    <div class="stock-price {price_class}">
-                        現價: {current_price} 元 ({change_symbol}{change_percent:.2f}%)
-                    </div>
-                </div>
-                <div class="stock-info">
-                    <div class="info-row">
-                        <span class="info-label">💵 成交金額:</span>
-                        {format_number(stock.get('trade_value', 0))}
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">📋 推薦理由:</span>
-                        {stock['reason']}
-                    </div>
-            """
-            
-            # 基本面資訊
-            if 'dividend_yield' in analysis and analysis['dividend_yield'] > 0:
-                html += f"""
-                    <div class="info-row">
-                        <span class="info-label">💸 殖利率:</span>
-                        {analysis['dividend_yield']:.1f}%
-                    </div>
-                """
-            
-            html += f"""
-                    <div class="info-row">
-                        <span class="info-label">🎯 目標價:</span>
-                        {stock.get('target_price', 'N/A')} 元
-                        <span class="info-label" style="margin-left: 20px;">🛡️ 止損價:</span>
-                        {stock.get('stop_loss', 'N/A')} 元
-                    </div>
-                </div>
-            </div>
-            """
-        
-        html += "</div>"
-    
-    # 風險警示
-    if weak_stocks:
-        html += """
-        <div class="section">
-            <div class="section-title">⚠️ 風險警示</div>
-        """
-        for stock in weak_stocks:
-            current_price = stock.get('current_price', 0)
-            analysis = stock.get('analysis', {})
-            change_percent = analysis.get('change_percent', 0)
-            
-            html += f"""
-            <div class="stock-card weak-stock">
-                <div class="stock-header">
-                    <div class="stock-name">⚠️ {stock['code']} {stock['name']}</div>
-                    <div class="stock-price price-down">
-                        現價: {current_price} 元 ({change_percent:.2f}%)
-                    </div>
-                </div>
-                <div class="stock-info">
-                    <div class="info-row">
-                        <span class="info-label">💵 成交金額:</span>
-                        {format_number(stock.get('trade_value', 0))}
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">🚨 警報原因:</span>
-                        {stock['alert_reason']}
-                    </div>
-                    <div class="info-row">
-                        <span class="info-label">⚠️ 風險提示:</span>
-                        建議謹慎操作，嚴設停損
-                    </div>
-                </div>
-            </div>
-            """
-        
-        html += "</div>"
-    
-    # 風險提示
-    html += """
-        <div class="warning">
-            <h3>⚠️ 投資提醒</h3>
-            <p>• 本報告僅供參考，不構成投資建議</p>
-            <p>• 股市有風險，投資需謹慎</p>
-            <p>• 建議設定停損點，控制投資風險</p>
-        </div>
-        
-        <div class="footer">
-            <p>此電子郵件由台股分析系統自動產生於 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p>祝您投資順利！💰</p>
-        </div>
-    </body>
-    </html>
-    """
-    
-    return html
-
-def send_heartbeat():
-    """發送心跳檢測"""
-    now = datetime.now()
-    
-    # 檢查上次心跳時間
-    if STATUS['last_heartbeat']:
-        try:
-            last_heartbeat = datetime.fromisoformat(STATUS['last_heartbeat'])
-            if (now - last_heartbeat).total_seconds() < 3600:  # 1小時內不重複發送
-                return False
-        except:
-            pass
-    
-    # 發送心跳通知
-    timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
-    message = f"🔔 系統心跳檢測通知\n\n"
-    message += f"⏰ 檢測時間: {timestamp}\n\n"
-    
-    # 系統狀態
-    message += "📊 系統狀態:\n"
-    
-    email_status = STATUS['email']
-    if email_status['last_success']:
-        try:
-            last_time = datetime.fromisoformat(email_status['last_success'])
-            hours_ago = (now - last_time).total_seconds() / 3600
-            time_str = f"{hours_ago:.1f} 小時前" if hours_ago >= 1 else f"{int((now - last_time).total_seconds() / 60)} 分鐘前"
-        except:
-            time_str = "時間解析錯誤"
-    else:
-        time_str = "從未成功"
-    
-    emoji = "✅" if email_status['available'] and email_status['failure_count'] < 3 else "⚠️"
-    message += f"  {emoji} 郵件通知: 上次成功 {time_str}, 失敗次數 {email_status['failure_count']}\n"
-    
-    # 未送達統計
-    message += f"\n📈 統計資訊:\n"
-    message += f"  • 未送達通知數: {STATUS['undelivered_count']}\n"
-    message += f"  • 系統運行正常: {'是' if email_status['failure_count'] < 5 else '否'}\n\n"
-    
-    message += "💡 如果您收到此訊息，表示通知系統運作正常！"
-    
-    # 發送心跳通知
-    success = send_notification(message, "🔔 系統心跳檢測")
-    
-    # 更新心跳時間
-    if success:
-        STATUS['last_heartbeat'] = now.isoformat()
-    
-    return success
-
-def is_notification_available():
-    """檢查通知系統是否可用"""
-    return (EMAIL_CONFIG['enabled'] and STATUS['email']['available']) or \
-           (FILE_BACKUP['enabled'] and STATUS['file']['available'])
-
-def init():
-    """初始化通知系統"""
-    log_event("初始化通知系統")
-    
-    # 檢查郵件配置
-    if EMAIL_CONFIG['enabled']:
-        missing = []
-        for key in ['sender', 'password', 'receiver']:
-            if not EMAIL_CONFIG[key]:
-                missing.append(f'EMAIL_{key.upper()}')
-        
-        if missing:
-            log_event(f"警告: 缺少以下郵件配置: {', '.join(missing)}", 'warning')
-            log_event("請設置相應的環境變數", 'warning')
-            STATUS['email']['available'] = False
-        else:
-            log_event("郵件配置檢查通過")
-            if 'gmail.com' in EMAIL_CONFIG['smtp_server']:
-                check_gmail_app_password()
-    
-    # 檢查文件備份
-    if FILE_BACKUP['enabled']:
-        try:
-            os.makedirs(FILE_BACKUP['directory'], exist_ok=True)
-            log_event(f"文件備份目錄準備完成: {FILE_BACKUP['directory']}")
-        except Exception as e:
-            log_event(f"文件備份目錄創建失敗: {e}", 'error')
-            STATUS['file']['available'] = False
-    
-    log_event("通知系統初始化完成")
-
-# 測試函數
-def test_notification():
-    """測試通知功能"""
-    log_event("開始測試通知功能")
-    
-    # 測試基本通知
-    test_message = f"""📧 通知系統測試
-    
-⏰ 測試時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-✅ 如果您收到此郵件，表示通知系統運作正常！
-
-🔧 系統資訊:
-• 郵件服務器: {EMAIL_CONFIG['smtp_server']}:{EMAIL_CONFIG['smtp_port']}
-• TLS加密: {'是' if EMAIL_CONFIG['use_tls'] else '否'}
-• 發件人: {EMAIL_CONFIG['sender']}
-• 收件人: {EMAIL_CONFIG['receiver']}
-
-📊 測試股票推薦格式:
-現價: 100.50 元 📈 +2.5%
-成交金額: 1.2億
-推薦理由: 技術面轉強，MACD金叉
-目標價: 110 元 | 止損價: 95 元
-
-💡 這是測試郵件，請忽略投資建議內容。
-"""
-    
-    success = send_notification(
-        message=test_message,
-        subject="📧 台股分析系統 - 通知測試",
-        urgent=False
-    )
-    
-    if success:
-        log_event("✅ 通知測試成功！請檢查您的郵箱")
-    else:
-        log_event("❌ 通知測試失敗，請檢查配置", 'error')
-    
-    return success
-
-if __name__ == "__main__":
-    # 初始化
-    init()
-    
-    # 執行測試
-    print("=" * 50)
-    print("修復版通知系統測試")
-    print("=" * 50)
-    
-    test_notification()
-    
-    print("\n" + "=" * 50)
-    print("Gmail設定指南:")
-    print("=" * 50)
-    print("1. 登入 Google 帳戶設定")
-    print("2. 啟用「兩步驟驗證」")
-    print("3. 生成「應用程式密碼」")
-    print("4. 將16位密碼設定為 EMAIL_PASSWORD 環境變數")
-    print("5. 重新執行測試")
-    print("=" * 50)
