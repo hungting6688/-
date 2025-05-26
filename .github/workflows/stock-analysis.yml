@@ -68,12 +68,12 @@ jobs:
       run: |
         echo "🔧 測試通知系統..."
         python -c "
-import notifier
-notifier.init()
-if notifier.is_notification_available():
-    print('✅ 通知系統可用')
-else:
-    print('⚠️ 通知系統配置不完整')
+        import notifier
+        notifier.init()
+        if notifier.is_notification_available():
+            print('✅ 通知系統可用')
+        else:
+            print('⚠️ 通知系統配置不完整')
         "
         
     - name: 決定執行類型
@@ -114,10 +114,10 @@ else:
         
         if [ "$RUN_TYPE" = "heartbeat" ]; then
           python -c "
-import notifier
-notifier.init()
-notifier.send_heartbeat()
-print('💓 心跳檢測完成')
+          import notifier
+          notifier.init()
+          notifier.send_heartbeat()
+          print('💓 心跳檢測完成')
           "
         else
           python enhanced_stock_bot.py $RUN_TYPE
@@ -168,43 +168,43 @@ print('💓 心跳檢測完成')
         EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
       run: |
         python -c "
-import os
-import smtplib
-from datetime import datetime
-from email.mime.text import MIMEText
+        import os
+        import smtplib
+        from datetime import datetime
+        from email.mime.text import MIMEText
 
-def send_error_notification():
-    sender = os.getenv('EMAIL_SENDER')
-    password = os.getenv('EMAIL_PASSWORD') 
-    receiver = os.getenv('EMAIL_RECEIVER')
-    
-    if not all([sender, password, receiver]):
-        print('缺少郵件配置，跳過錯誤通知')
-        return
-    
-    message = f'''❌ 台股分析機器人執行失敗
-    
-⏰ 失敗時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-🔗 查看詳情: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        def send_error_notification():
+            sender = os.getenv('EMAIL_SENDER')
+            password = os.getenv('EMAIL_PASSWORD') 
+            receiver = os.getenv('EMAIL_RECEIVER')
+            
+            if not all([sender, password, receiver]):
+                print('缺少郵件配置，跳過錯誤通知')
+                return
+            
+            message = f'''❌ 台股分析機器人執行失敗
+            
+        ⏰ 失敗時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        🔗 查看詳情: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-請檢查 GitHub Actions 日誌了解詳細錯誤資訊。
-    '''
-    
-    try:
-        msg = MIMEText(message, 'plain', 'utf-8')
-        msg['Subject'] = '❌ 台股分析機器人執行失敗通知'
-        msg['From'] = sender
-        msg['To'] = receiver
-        
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(sender, password)
-        server.send_message(msg)
-        server.quit()
-        
-        print('✅ 錯誤通知已發送')
-    except Exception as e:
-        print(f'❌ 發送錯誤通知失敗: {e}')
+        請檢查 GitHub Actions 日誌了解詳細錯誤資訊。
+            '''
+            
+            try:
+                msg = MIMEText(message, 'plain', 'utf-8')
+                msg['Subject'] = '❌ 台股分析機器人執行失敗通知'
+                msg['From'] = sender
+                msg['To'] = receiver
+                
+                server = smtplib.SMTP('smtp.gmail.com', 587)
+                server.starttls()
+                server.login(sender, password)
+                server.send_message(msg)
+                server.quit()
+                
+                print('✅ 錯誤通知已發送')
+            except Exception as e:
+                print(f'❌ 發送錯誤通知失敗: {e}')
 
-send_error_notification()
+        send_error_notification()
         "
