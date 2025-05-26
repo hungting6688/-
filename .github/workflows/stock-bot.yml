@@ -1,4 +1,4 @@
-name: 🚀 Taiwan Stock Analysis Bot - Enhanced Long-term Fundamental Analysis
+name: Taiwan Stock Analysis Bot - Enhanced Long-term Fundamental Analysis
 
 on:
   schedule:
@@ -68,125 +68,125 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 📥 Checkout Repository
+    - name: Checkout Repository
       uses: actions/checkout@v4
       
-    - name: 🐍 Setup Python Environment
+    - name: Setup Python Environment
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
         cache: 'pip'
         
-    - name: 📦 Install Dependencies
+    - name: Install Dependencies
       run: |
-        echo "📦 安裝套件依賴..."
+        echo "安裝套件依賴..."
         pip install --upgrade pip
         pip install -r requirements.txt
-        echo "✅ 套件安裝完成"
+        echo "套件安裝完成"
         
-    - name: 🔧 Setup Environment
+    - name: Setup Environment
       run: |
-        echo "🔧 設置執行環境..."
+        echo "設置執行環境..."
         
         # 創建必要目錄
         mkdir -p logs cache data data/analysis_results data/analysis_results_optimized
         
         # 顯示時區資訊
-        echo "🌏 當前時區: $(date)"
-        echo "🌏 台灣時間: $(TZ=Asia/Taipei date)"
+        echo "當前時區: $(date)"
+        echo "台灣時間: $(TZ=Asia/Taipei date)"
         
         # 檢查優化版系統文件
         if [ -f "enhanced_stock_bot_optimized.py" ] && [ -f "optimized_notifier.py" ]; then
-          echo "✅ 優化版系統檔案就緒"
+          echo "優化版系統檔案就緒"
           echo "OPTIMIZED_SYSTEM_AVAILABLE=true" >> $GITHUB_ENV
         else
-          echo "⚠️ 優化版系統檔案不存在，將使用標準版"
+          echo "優化版系統檔案不存在，將使用標準版"
           echo "OPTIMIZED_SYSTEM_AVAILABLE=false" >> $GITHUB_ENV
         fi
         
         # 檢查必要配置
         if [ -z "$EMAIL_SENDER" ] || [ -z "$EMAIL_PASSWORD" ] || [ -z "$EMAIL_RECEIVER" ]; then
-          echo "❌ 郵件配置不完整"
+          echo "郵件配置不完整"
           echo "EMAIL_CONFIG_VALID=false" >> $GITHUB_ENV
         else
-          echo "✅ 郵件配置檢查通過"
+          echo "郵件配置檢查通過"
           echo "EMAIL_CONFIG_VALID=true" >> $GITHUB_ENV
         fi
         
-    - name: 🕒 Determine Analysis Type
+    - name: Determine Analysis Type
       run: |
-        echo "🕒 決定分析類型..."
+        echo "決定分析類型..."
         
         # 如果是手動觸發
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           ANALYSIS_TYPE="${{ github.event.inputs.analysis_type }}"
-          echo "👤 手動觸發: $ANALYSIS_TYPE"
+          echo "手動觸發: $ANALYSIS_TYPE"
         else
           # 根據排程時間決定分析類型
           CURRENT_HOUR=$(TZ=Asia/Taipei date +%H)
-          CURRENT_DAY=$(TZ=Asia/Taipei date +%u)  # 1=Monday, 7=Sunday
+          CURRENT_DAY=$(TZ=Asia/Taipei date +%u)
           
-          echo "📅 當前時間: $(TZ=Asia/Taipei date)"
-          echo "⏰ 小時: $CURRENT_HOUR, 星期: $CURRENT_DAY"
+          echo "當前時間: $(TZ=Asia/Taipei date)"
+          echo "小時: $CURRENT_HOUR, 星期: $CURRENT_DAY"
           
           case $CURRENT_HOUR in
-            01) ANALYSIS_TYPE="morning_scan" ;;      # 09:00 台灣時間
-            02) ANALYSIS_TYPE="mid_morning_scan" ;;  # 10:30 台灣時間  
-            04) ANALYSIS_TYPE="mid_day_scan" ;;      # 12:30 台灣時間
-            07) ANALYSIS_TYPE="afternoon_scan" ;;    # 15:00 台灣時間
-            09) if [ $CURRENT_DAY -eq 5 ]; then     # 週五
-                  ANALYSIS_TYPE="weekly_summary"     # 17:00 台灣時間
+            01) ANALYSIS_TYPE="morning_scan" ;;
+            02) ANALYSIS_TYPE="mid_morning_scan" ;;
+            04) ANALYSIS_TYPE="mid_day_scan" ;;
+            07) ANALYSIS_TYPE="afternoon_scan" ;;
+            09) if [ $CURRENT_DAY -eq 5 ]; then
+                  ANALYSIS_TYPE="weekly_summary"
                 else
                   ANALYSIS_TYPE="afternoon_scan"
                 fi ;;
-            00) ANALYSIS_TYPE="heartbeat" ;;         # 08:30 台灣時間
-            *) ANALYSIS_TYPE="afternoon_scan" ;;     # 預設值
+            00) ANALYSIS_TYPE="heartbeat" ;;
+            *) ANALYSIS_TYPE="afternoon_scan" ;;
           esac
           
-          echo "🤖 自動排程: $ANALYSIS_TYPE"
+          echo "自動排程: $ANALYSIS_TYPE"
         fi
         
         echo "ANALYSIS_TYPE=$ANALYSIS_TYPE" >> $GITHUB_ENV
-        echo "📊 將執行: $ANALYSIS_TYPE"
+        echo "將執行: $ANALYSIS_TYPE"
         
-    - name: 💎 Run Optimized Stock Analysis
+    - name: Run Optimized Stock Analysis
       if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'true' && env.EMAIL_CONFIG_VALID == 'true'
       run: |
-        echo "💎 執行優化版股市分析..."
-        echo "📊 分析類型: $ANALYSIS_TYPE"
+        echo "執行優化版股市分析..."
+        echo "分析類型: $ANALYSIS_TYPE"
         
         # 顯示優化版特色
-        echo "✨ 優化版特色:"
-        echo "  📈 長線推薦基本面權重提升 140%"
-        echo "  🏦 法人買賣權重提升 33%"  
-        echo "  💸 殖利率 > 2.5% 優先推薦"
-        echo "  📊 EPS成長 > 8% 優先推薦"
-        echo "  💰 法人買超 > 5000萬 優先推薦"
+        echo "優化版特色:"
+        echo "  長線推薦基本面權重提升 140%"
+        echo "  法人買賣權重提升 33%"
+        echo "  殖利率 > 2.5% 優先推薦"
+        echo "  EPS成長 > 8% 優先推薦"
+        echo "  法人買超 > 5000萬 優先推薦"
         
         # 根據分析類型顯示預期結果
         case $ANALYSIS_TYPE in
           "morning_scan")
-            echo "🌅 早盤掃描: 200支股票，短線推薦優先"
+            echo "早盤掃描: 200支股票，短線推薦優先"
             ;;
           "mid_morning_scan")
-            echo "☀️ 盤中掃描: 300支股票，短線推薦優先"
+            echo "盤中掃描: 300支股票，短線推薦優先"
             ;;
           "mid_day_scan")
-            echo "🌞 午間掃描: 300支股票，混合分析"
+            echo "午間掃描: 300支股票，混合分析"
             ;;
           "afternoon_scan")
-            echo "🌇 盤後掃描: 1000支股票，長線推薦增加至4支"
-            echo "💎 重點關注基本面優質股"
+            echo "盤後掃描: 1000支股票，長線推薦增加至4支"
+            echo "重點關注基本面優質股"
             ;;
           "weekly_summary")
-            echo "📈 週末總結: 1000支股票，長線推薦增加至5支"
-            echo "💎 深度挖掘基本面優質股，最佳長線分析時段"
+            echo "週末總結: 1000支股票，長線推薦增加至5支"
+            echo "深度挖掘基本面優質股，最佳長線分析時段"
             ;;
           "heartbeat")
-            echo "💓 系統心跳檢測"
+            echo "系統心跳檢測"
             ;;
           "test_notification")
-            echo "📧 測試通知功能"
+            echo "測試通知功能"
             ;;
         esac
         
@@ -199,17 +199,16 @@ try:
     import optimized_notifier as notifier
     notifier.init()
     result = notifier.send_heartbeat()
-    print('💓 心跳檢測完成:', '成功' if result else '失敗')
+    print('心跳檢測完成:', '成功' if result else '失敗')
 except Exception as e:
-    print('❌ 心跳檢測失敗:', str(e))
-    # 嘗試使用標準版
+    print('心跳檢測失敗:', str(e))
     try:
         import notifier
         notifier.init()
         result = notifier.send_heartbeat()
-        print('💓 標準版心跳檢測完成:', '成功' if result else '失敗')
+        print('標準版心跳檢測完成:', '成功' if result else '失敗')
     except Exception as e2:
-        print('❌ 標準版心跳也失敗:', str(e2))
+        print('標準版心跳也失敗:', str(e2))
         sys.exit(1)
 "
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
@@ -218,12 +217,12 @@ except Exception as e:
           python run_optimized_system.py run --slot $ANALYSIS_TYPE
         fi
         
-    - name: 📊 Run Standard Stock Analysis
+    - name: Run Standard Stock Analysis
       if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'false' && env.EMAIL_CONFIG_VALID == 'true'
       run: |
-        echo "📊 執行標準版股市分析..."
-        echo "⚠️ 優化版系統不可用，使用標準版"
-        echo "📊 分析類型: $ANALYSIS_TYPE"
+        echo "執行標準版股市分析..."
+        echo "優化版系統不可用，使用標準版"
+        echo "分析類型: $ANALYSIS_TYPE"
         
         # 執行標準版分析
         if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
@@ -234,9 +233,9 @@ try:
     import notifier
     notifier.init()
     result = notifier.send_heartbeat()
-    print('💓 心跳檢測完成:', '成功' if result else '失敗')
+    print('心跳檢測完成:', '成功' if result else '失敗')
 except Exception as e:
-    print('❌ 心跳檢測失敗:', str(e))
+    print('心跳檢測失敗:', str(e))
     sys.exit(1)
 "
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
@@ -248,23 +247,23 @@ except Exception as e:
           elif [ -f "stock_bot.py" ]; then  
             python stock_bot.py $ANALYSIS_TYPE
           else
-            echo "❌ 找不到可執行的分析程式"
+            echo "找不到可執行的分析程式"
             exit 1
           fi
         fi
         
-    - name: ❌ Handle Missing Configuration
+    - name: Handle Missing Configuration
       if: env.EMAIL_CONFIG_VALID == 'false'
       run: |
-        echo "❌ 郵件配置不完整，無法執行分析"
+        echo "郵件配置不完整，無法執行分析"
         echo ""
-        echo "🔧 請在 GitHub Repository Settings > Secrets 中設定："
-        echo "  📧 EMAIL_SENDER - 發件人郵箱"
-        echo "  🔑 EMAIL_PASSWORD - 郵箱應用程式密碼"
-        echo "  📨 EMAIL_RECEIVER - 收件人郵箱"
+        echo "請在 GitHub Repository Settings > Secrets 中設定："
+        echo "  EMAIL_SENDER - 發件人郵箱"
+        echo "  EMAIL_PASSWORD - 郵箱應用程式密碼"
+        echo "  EMAIL_RECEIVER - 收件人郵箱"
         echo ""
-        echo "💡 Gmail 用戶請使用應用程式密碼（16位數）"
-        echo "💡 設定步驟："
+        echo "Gmail 用戶請使用應用程式密碼（16位數）"
+        echo "設定步驟："
         echo "  1. 啟用 Google 兩步驟驗證"
         echo "  2. 生成應用程式密碼"
         echo "  3. 將16位密碼設為 EMAIL_PASSWORD"
@@ -275,42 +274,42 @@ except Exception as e:
         
         exit 1
         
-    - name: 📋 Analysis Summary
+    - name: Analysis Summary
       if: success()
       run: |
-        echo "📋 分析執行摘要"
+        echo "分析執行摘要"
         echo "==============================================="
-        echo "⏰ 執行時間: $(TZ=Asia/Taipei date)"
-        echo "📊 分析類型: $ANALYSIS_TYPE"
-        echo "💎 系統版本: $([ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ] && echo "優化版（長線基本面強化）" || echo "標準版")"
-        echo "📧 通知狀態: $([ "$EMAIL_CONFIG_VALID" = "true" ] && echo "已發送" || echo "配置錯誤")"
+        echo "執行時間: $(TZ=Asia/Taipei date)"
+        echo "分析類型: $ANALYSIS_TYPE"
+        echo "系統版本: $([ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ] && echo "優化版（長線基本面強化）" || echo "標準版")"
+        echo "通知狀態: $([ "$EMAIL_CONFIG_VALID" = "true" ] && echo "已發送" || echo "配置錯誤")"
         echo ""
         
         if [ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ]; then
-          echo "✨ 優化版功能已啟用："
-          echo "  💎 長線推薦基本面分析強化"
-          echo "  📊 重點關注：殖利率、EPS成長、法人買超"
-          echo "  🎯 推薦標準：更嚴格的基本面篩選"
-          echo "  📧 通知優化：詳細基本面資訊顯示"
+          echo "優化版功能已啟用："
+          echo "  長線推薦基本面分析強化"
+          echo "  重點關注：殖利率、EPS成長、法人買超"
+          echo "  推薦標準：更嚴格的基本面篩選"
+          echo "  通知優化：詳細基本面資訊顯示"
         fi
         
         # 根據分析類型顯示特色
         case $ANALYSIS_TYPE in
           "afternoon_scan"|"weekly_summary")
             echo ""
-            echo "💎 長線分析重點："
-            echo "  📈 1000支股票深度分析"
-            echo "  💸 優先推薦高殖利率股票（>2.5%）"
-            echo "  📊 優先推薦EPS高成長股票（>8%）"
-            echo "  🏦 優先推薦法人大額買超股票（>5000萬）"
-            echo "  🏆 重視ROE、連續配息等品質指標"
+            echo "長線分析重點："
+            echo "  1000支股票深度分析"
+            echo "  優先推薦高殖利率股票（>2.5%）"
+            echo "  優先推薦EPS高成長股票（>8%）"
+            echo "  優先推薦法人大額買超股票（>5000萬）"
+            echo "  重視ROE、連續配息等品質指標"
             ;;
         esac
         
         echo "==============================================="
-        echo "✅ 股市分析系統執行完成"
+        echo "股市分析系統執行完成"
         
-    - name: 🗂️ Archive Analysis Results
+    - name: Archive Analysis Results
       if: always()
       uses: actions/upload-artifact@v4
       with:
@@ -321,20 +320,20 @@ except Exception as e:
           *.log
         retention-days: 30
         
-    - name: 💬 Workflow Status Notification
+    - name: Workflow Status Notification
       if: failure()
       run: |
-        echo "❌ 工作流程執行失敗"
-        echo "📊 分析類型: $ANALYSIS_TYPE"
-        echo "⏰ 失敗時間: $(TZ=Asia/Taipei date)"
+        echo "工作流程執行失敗"
+        echo "分析類型: $ANALYSIS_TYPE"
+        echo "失敗時間: $(TZ=Asia/Taipei date)"
         echo ""
-        echo "🔍 可能原因："
+        echo "可能原因："
         echo "  1. 郵件配置錯誤"
         echo "  2. 網路連線問題"
         echo "  3. 台股資料源異常"
         echo "  4. 程式碼錯誤"
         echo ""
-        echo "💡 建議檢查："
+        echo "建議檢查："
         echo "  - GitHub Secrets 郵件設定"
         echo "  - 程式碼是否正確"
         echo "  - 執行日誌錯誤訊息"
