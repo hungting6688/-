@@ -277,10 +277,9 @@ def save_notification_to_file(message, subject, html_body=None, urgent=False):
         log_event(f"保存通知到文件失敗: {e}", 'error')
         return False
 
-def send_combined_recommendations(strategies_data, time_slot):
-    """
-    發送包含三種策略的股票推薦通知（增強版 - 重點顯示長線基本面資訊）
-    """
+def generate_enhanced_html_report(strategies_data, time_slot, date):
+    """生成增強版HTML報告（重點顯示長線基本面資訊）"""
+    
     short_term_stocks = strategies_data.get("short_term", [])
     long_term_stocks = strategies_data.get("long_term", [])
     weak_stocks = strategies_data.get("weak_stocks", [])
@@ -799,6 +798,232 @@ def send_combined_recommendations(strategies_data, time_slot):
     
     return html
 
+def send_combined_recommendations(strategies_data, time_slot):
+    """
+    發送包含三種策略的股票推薦通知（增強版 - 重點顯示長線基本面資訊）
+    """
+    short_term_stocks = strategies_data.get("short_term", [])
+    long_term_stocks = strategies_data.get("long_term", [])
+    weak_stocks = strategies_data.get("weak_stocks", [])
+    
+    if not short_term_stocks and not long_term_stocks and not weak_stocks:
+        message = f"【{time_slot}分析報告】\n\n沒有符合條件的推薦股票和警示"
+        subject = f"【{time_slot}分析報告】- 無推薦"
+        send_notification(message, subject)
+        return
+    
+    # 生成通知消息
+    today = datetime.now().strftime("%Y/%m/%d")
+    message = f"📈 {today} {time_slot}分析報告\n\n"
+    
+    # 短線推薦部分（技術面為主）
+    message += "【短線推薦】（技術面主導）\n\n"
+    if short_term_stocks:
+        for i, stock in enumerate(short_term_stocks, 1):
+            message += f"📈 {i}. {stock['code']} {stock['name']}\n"
+            
+            # 現價和漲跌幅（重點增強）
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
+            
+            # 成交量和資金流向
+            trade_value = stock.get('trade_value', 0)
+            message += f"💵 成交金額: {format_number(trade_value)}\n"
+            
+            # 法人買超資訊
+            foreign_info = format_foreign_net_buy(analysis.get('foreign_net_buy', 0))
+            if foreign_info:
+                message += f"{foreign_info}\n"
+            
+            # 推薦理由
+            message += f"📊 推薦理由: {stock['reason']}\n"
+            
+            # 目標價和止損價
+            target_price = stock.get('target_price')
+            stop_loss = stock.get('stop_loss')
+            if target_price:
+                message += f"🎯 目標價: {target_price} 元"
+            if stop_loss:
+                message += f" | 🛡️ 止損價: {stop_loss} 元"
+            message += "\n"
+            
+            # 技術指標（如果有）
+            if 'technical_signals' in analysis:
+                signals = analysis['technical_signals']
+                indicators = []
+                if signals.get('rsi_healthy'):
+                    indicators.append("RSI健康")
+                if signals.get('macd_bullish'):
+                    indicators.append("MACD轉強")
+                if signals.get('ma20_bullish'):
+                    indicators.append("站穩均線")
+                if indicators:
+                    message += f"📊 技術指標: {' | '.join(indicators)}\n"
+            
+            message += "\n"
+    else:
+        message += "今日無短線推薦股票\n\n"
+    
+    # 長線推薦部分（基本面為主） - 重點增強
+    message += "【長線潛力】（基本面主導）\n\n"
+    if long_term_stocks:
+        for i, stock in enumerate(long_term_stocks, 1):
+            message += f"💎 {i}. {stock['code']} {stock['name']}\n"
+            
+            # 現價和漲跌幅
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
+            
+            # 成交量
+            trade_value = stock.get('trade_value', 0)
+            message += f"💵 成交金額: {format_number(trade_value)}\n"
+            
+            # 重點：基本面資訊
+            fundamental_info = []
+            
+            # 殖利率資訊
+            dividend_yield = analysis.get('dividend_yield', 0)
+            if dividend_yield > 0:
+                if dividend_yield > 5:
+                    fundamental_info.append(f"💰 高殖利率: {dividend_yield:.1f}%")
+                elif dividend_yield > 3:
+                    fundamental_info.append(f"💰 殖利率: {dividend_yield:.1f}%")
+                else:
+                    fundamental_info.append(f"💰 殖利率: {dividend_yield:.1f}%")
+            
+            # EPS成長資訊
+            eps_growth = analysis.get('eps_growth', 0)
+            if eps_growth > 0:
+                if eps_growth > 15:
+                    fundamental_info.append(f"📈 EPS高成長: {eps_growth:.1f}%")
+                elif eps_growth > 10:
+                    fundamental_info.append(f"📈 EPS成長: {eps_growth:.1f}%")
+                elif eps_growth > 5:
+                    fundamental_info.append(f"📈 EPS穩定成長: {eps_growth:.1f}%")
+            
+            # ROE資訊
+            roe = analysis.get('roe', 0)
+            if roe > 15:
+                fundamental_info.append(f"🏆 ROE優異: {roe:.1f}%")
+            elif roe > 10:
+                fundamental_info.append(f"🏆 ROE良好: {roe:.1f}%")
+            
+            # 本益比資訊
+            pe_ratio = analysis.get('pe_ratio', 0)
+            if 0 < pe_ratio < 15:
+                fundamental_info.append(f"📊 本益比合理: {pe_ratio:.1f}倍")
+            elif pe_ratio > 0:
+                fundamental_info.append(f"📊 本益比: {pe_ratio:.1f}倍")
+            
+            # 顯示基本面資訊
+            if fundamental_info:
+                message += f"📋 基本面: {' | '.join(fundamental_info)}\n"
+            
+            # 法人買超資訊 - 加強顯示
+            foreign_net = analysis.get('foreign_net_buy', 0)
+            trust_net = analysis.get('trust_net_buy', 0)
+            consecutive_days = analysis.get('consecutive_buy_days', 0)
+            
+            institutional_info = []
+            
+            # 外資買超
+            if abs(foreign_net) >= 1000:  # 大於1000萬才顯示
+                foreign_info = format_foreign_net_buy(foreign_net)
+                if foreign_info:
+                    institutional_info.append(foreign_info.replace('🏦 ', ''))
+            
+            # 投信買超
+            if trust_net > 5000:  # 5000萬以上
+                trust_amount = trust_net / 10000
+                if trust_amount >= 1:
+                    institutional_info.append(f"投信買超: {trust_amount:.1f}億")
+                else:
+                    institutional_info.append(f"投信買超: {trust_net/1000:.0f}千萬")
+            elif trust_net < -5000:
+                trust_amount = abs(trust_net) / 10000
+                if trust_amount >= 1:
+                    institutional_info.append(f"投信賣超: {trust_amount:.1f}億")
+                else:
+                    institutional_info.append(f"投信賣超: {abs(trust_net)/1000:.0f}千萬")
+            
+            # 連續買超天數
+            if consecutive_days >= 3:
+                institutional_info.append(f"連續買超{consecutive_days}天")
+            elif consecutive_days <= -3:
+                institutional_info.append(f"連續賣超{abs(consecutive_days)}天")
+            
+            if institutional_info:
+                message += f"🏦 法人動向: {' | '.join(institutional_info)}\n"
+            
+            # 長線評分（如果有的話）
+            long_term_score = stock.get('long_term_score', 0)
+            if long_term_score > 0:
+                message += f"⭐ 長線評分: {long_term_score:.1f}分\n"
+            
+            # 推薦理由
+            message += f"📋 推薦理由: {stock['reason']}\n"
+            
+            # 目標價和止損價
+            target_price = stock.get('target_price')
+            stop_loss = stock.get('stop_loss')
+            if target_price:
+                message += f"🎯 目標價: {target_price} 元"
+            if stop_loss:
+                message += f" | 🛡️ 止損價: {stop_loss} 元"
+            message += "\n\n"
+    else:
+        message += "今日無長線推薦股票\n\n"
+    
+    # 極弱股警示部分（增強版）
+    message += "【風險警示】\n\n"
+    if weak_stocks:
+        for i, stock in enumerate(weak_stocks, 1):
+            message += f"⚠️ {i}. {stock['code']} {stock['name']}\n"
+            
+            # 現價和跌幅
+            current_price = stock.get('current_price', 0)
+            analysis = stock.get('analysis', {})
+            change_percent = analysis.get('change_percent', 0)
+            
+            message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
+            
+            # 成交量
+            trade_value = stock.get('trade_value', 0)
+            message += f"💵 成交金額: {format_number(trade_value)}\n"
+            
+            # 法人賣超資訊
+            foreign_info = format_foreign_net_buy(analysis.get('foreign_net_buy', 0))
+            if foreign_info and '賣超' in foreign_info:
+                message += f"{foreign_info}\n"
+            
+            # 警報原因
+            message += f"🚨 警報原因: {stock['alert_reason']}\n"
+            
+            # 風險提示
+            message += f"⚠️ 風險提示: 建議謹慎操作，嚴設停損\n\n"
+    else:
+        message += "今日無極弱股警示\n\n"
+    
+    # 風險提示
+    message += "【投資提醒】\n"
+    message += "⚠️ 本報告僅供參考，不構成投資建議\n"
+    message += "⚠️ 股市有風險，投資需謹慎\n"
+    message += "⚠️ 長線投資重視基本面，短線操作注重技術面\n"
+    message += "⚠️ 建議設定停損點，控制投資風險\n\n"
+    message += "祝您投資順利！💰"
+    
+    # 生成HTML格式（增強版）
+    html_body = generate_enhanced_html_report(strategies_data, time_slot, today)
+    
+    subject = f"【{time_slot}分析報告】- {today}"
+    send_notification(message, subject, html_body)
+
 def send_heartbeat():
     """發送心跳檢測"""
     now = datetime.now()
@@ -898,286 +1123,59 @@ def init():
 def test_notification():
     """測試通知功能"""
     log_event("開始測試增強版通知功能")
+    
+    # 測試基本通知
+    test_message = f"""📧 增強版通知系統測試
 
-def generate_analysis_report(short_term_stocks, long_term_stocks, weak_stocks, time_slot):
-    
-        # 測試基本通知
-        test_message = f"""📧 增強版通知系統測試
-    
-    ⏰ 測試時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+⏰ 測試時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-    ✅ 如果您收到此郵件，表示通知系統運作正常！
+✅ 如果您收到此郵件，表示通知系統運作正常！
 
-    🆕 增強功能:
-    • 長線推薦重視基本面指標
-    • EPS成長率、殖利率、ROE詳細顯示
-    • 法人買賣超資訊加強
-    • HTML郵件美化升級
+🆕 增強功能:
+• 長線推薦重視基本面指標
+• EPS成長率、殖利率、ROE詳細顯示
+• 法人買賣超資訊加強
+• HTML郵件美化升級
 
-    🔧 系統資訊:
-    • 郵件服務器: {EMAIL_CONFIG['smtp_server']}:{EMAIL_CONFIG['smtp_port']}
-    • TLS加密: {'是' if EMAIL_CONFIG['use_tls'] else '否'}
-    • 發件人: {EMAIL_CONFIG['sender']}
-    • 收件人: {EMAIL_CONFIG['receiver']}
+🔧 系統資訊:
+• 郵件服務器: {EMAIL_CONFIG['smtp_server']}:{EMAIL_CONFIG['smtp_port']}
+• TLS加密: {'是' if EMAIL_CONFIG['use_tls'] else '否'}
+• 發件人: {EMAIL_CONFIG['sender']}
+• 收件人: {EMAIL_CONFIG['receiver']}
 
-    💡 這是測試郵件，請忽略投資建議內容。
-    """
-    
-        success = send_notification(
-            message=test_message,
-            subject="📧 台股分析系統 - 增強版通知測試",
-            urgent=False
-        )
-    
-        if success:
-            log_event("✅ 增強版通知測試成功！請檢查您的郵箱")
-        else:
-            log_event("❌ 增強版通知測試失敗，請檢查配置", 'error')
-    
-        return success
+💡 這是測試郵件，請忽略投資建議內容。
+"""
 
-    if __name__ == "__main__":
-        # 初始化
-        init()
-    
-        # 執行測試
-        print("=" * 50)
-        print("增強版通知系統測試")
-        print("=" * 50)
-    
-        test_notification()
-    
-        print("\n" + "=" * 50)
-        print("增強功能說明:")
-        print("=" * 50)
-        print("1. 長線推薦加強基本面顯示")
-        print("2. EPS成長率、殖利率、ROE等關鍵指標")
-        print("3. 法人買賣超資訊詳細顯示")
-        print("4. HTML郵件格式全面升級")
-        print("5. 區分短線技術面和長線基本面重點")
-        print("=" * 50)
-    
-        if not short_term_stocks and not long_term_stocks and not weak_stocks:
-            message = f"【{time_slot}分析報告】\n\n沒有符合條件的推薦股票和警示"
-            subject = f"【{time_slot}分析報告】- 無推薦"
-            send_notification(message, subject)
-            return
-    
-        # 生成通知消息
-        today = datetime.now().strftime("%Y/%m/%d")
-        message = f"📈 {today} {time_slot}分析報告\n\n"
-    
-        # 短線推薦部分（技術面為主）
-        message += "【短線推薦】（技術面主導）\n\n"
-        if short_term_stocks:
-            for i, stock in enumerate(short_term_stocks, 1):
-                message += f"📈 {i}. {stock['code']} {stock['name']}\n"
-            
-                # 現價和漲跌幅（重點增強）
-                current_price = stock.get('current_price', 0)
-                analysis = stock.get('analysis', {})
-                change_percent = analysis.get('change_percent', 0)
-            
-                message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
-            
-                # 成交量和資金流向
-                trade_value = stock.get('trade_value', 0)
-                message += f"💵 成交金額: {format_number(trade_value)}\n"
-            
-                # 法人買超資訊
-                foreign_info = format_foreign_net_buy(analysis.get('foreign_net_buy', 0))
-                if foreign_info:
-                    message += f"{foreign_info}\n"
-            
-                # 推薦理由
-                message += f"📊 推薦理由: {stock['reason']}\n"
-            
-                # 目標價和止損價
-                target_price = stock.get('target_price')
-                stop_loss = stock.get('stop_loss')
-                if target_price:
-                    message += f"🎯 目標價: {target_price} 元"
-                if stop_loss:
-                    message += f" | 🛡️ 止損價: {stop_loss} 元"
-                message += "\n"
-            
-                # 技術指標（如果有）
-                if 'technical_signals' in analysis:
-                    signals = analysis['technical_signals']
-                    indicators = []
-                    if signals.get('rsi_healthy'):
-                        indicators.append("RSI健康")
-                    if signals.get('macd_bullish'):
-                        indicators.append("MACD轉強")
-                    if signals.get('ma20_bullish'):
-                        indicators.append("站穩均線")
-                    if indicators:
-                        message += f"📊 技術指標: {' | '.join(indicators)}\n"
-            
-                message += "\n"
-        else:
-            message += "今日無短線推薦股票\n\n"
-    
-        # 長線推薦部分（基本面為主） - 重點增強
-        message += "【長線潛力】（基本面主導）\n\n"
-        if long_term_stocks:
-            for i, stock in enumerate(long_term_stocks, 1):
-                message += f"💎 {i}. {stock['code']} {stock['name']}\n"
-            
-                # 現價和漲跌幅
-                current_price = stock.get('current_price', 0)
-                analysis = stock.get('analysis', {})
-                change_percent = analysis.get('change_percent', 0)
-            
-                message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
-            
-                # 成交量
-                trade_value = stock.get('trade_value', 0)
-                message += f"💵 成交金額: {format_number(trade_value)}\n"
-            
-                # 重點：基本面資訊
-                fundamental_info = []
-            
-                # 殖利率資訊
-                dividend_yield = analysis.get('dividend_yield', 0)
-                if dividend_yield > 0:
-                    if dividend_yield > 5:
-                        fundamental_info.append(f"💰 高殖利率: {dividend_yield:.1f}%")
-                    elif dividend_yield > 3:
-                        fundamental_info.append(f"💰 殖利率: {dividend_yield:.1f}%")
-                    else:
-                        fundamental_info.append(f"💰 殖利率: {dividend_yield:.1f}%")
-            
-                # EPS成長資訊
-                eps_growth = analysis.get('eps_growth', 0)
-                if eps_growth > 0:
-                    if eps_growth > 15:
-                        fundamental_info.append(f"📈 EPS高成長: {eps_growth:.1f}%")
-                    elif eps_growth > 10:
-                        fundamental_info.append(f"📈 EPS成長: {eps_growth:.1f}%")
-                    elif eps_growth > 5:
-                        fundamental_info.append(f"📈 EPS穩定成長: {eps_growth:.1f}%")
-            
-                # ROE資訊
-                roe = analysis.get('roe', 0)
-                if roe > 15:
-                    fundamental_info.append(f"🏆 ROE優異: {roe:.1f}%")
-                elif roe > 10:
-                    fundamental_info.append(f"🏆 ROE良好: {roe:.1f}%")
-            
-                # 本益比資訊
-                pe_ratio = analysis.get('pe_ratio', 0)
-                if 0 < pe_ratio < 15:
-                    fundamental_info.append(f"📊 本益比合理: {pe_ratio:.1f}倍")
-                elif pe_ratio > 0:
-                    fundamental_info.append(f"📊 本益比: {pe_ratio:.1f}倍")
-            
-                # 顯示基本面資訊
-                if fundamental_info:
-                    message += f"📋 基本面: {' | '.join(fundamental_info)}\n"
-            
-                # 法人買超資訊 - 加強顯示
-                foreign_net = analysis.get('foreign_net_buy', 0)
-                trust_net = analysis.get('trust_net_buy', 0)
-                consecutive_days = analysis.get('consecutive_buy_days', 0)
-            
-                institutional_info = []
-            
-                # 外資買超
-                if abs(foreign_net) >= 1000:  # 大於1000萬才顯示
-                    foreign_info = format_foreign_net_buy(foreign_net)
-                    if foreign_info:
-                        institutional_info.append(foreign_info.replace('🏦 ', ''))
-            
-                # 投信買超
-                if trust_net > 5000:  # 5000萬以上
-                    trust_amount = trust_net / 10000
-                    if trust_amount >= 1:
-                        institutional_info.append(f"投信買超: {trust_amount:.1f}億")
-                    else:
-                        institutional_info.append(f"投信買超: {trust_net/1000:.0f}千萬")
-                elif trust_net < -5000:
-                    trust_amount = abs(trust_net) / 10000
-                    if trust_amount >= 1:
-                        institutional_info.append(f"投信賣超: {trust_amount:.1f}億")
-                    else:
-                        institutional_info.append(f"投信賣超: {abs(trust_net)/1000:.0f}千萬")
-            
-                # 連續買超天數
-                if consecutive_days >= 3:
-                    institutional_info.append(f"連續買超{consecutive_days}天")
-                elif consecutive_days <= -3:
-                    institutional_info.append(f"連續賣超{abs(consecutive_days)}天")
-            
-                if institutional_info:
-                    message += f"🏦 法人動向: {' | '.join(institutional_info)}\n"
-            
-                # 長線評分（如果有的話）
-                long_term_score = stock.get('long_term_score', 0)
-                if long_term_score > 0:
-                    message += f"⭐ 長線評分: {long_term_score:.1f}分\n"
-            
-                # 推薦理由
-                message += f"📋 推薦理由: {stock['reason']}\n"
-            
-                # 目標價和止損價
-                target_price = stock.get('target_price')
-                stop_loss = stock.get('stop_loss')
-                if target_price:
-                    message += f"🎯 目標價: {target_price} 元"
-                if stop_loss:
-                    message += f" | 🛡️ 止損價: {stop_loss} 元"
-                message += "\n\n"
-        else:
-            message += "今日無長線推薦股票\n\n"
-    
-        # 極弱股警示部分（增強版）
-        message += "【風險警示】\n\n"
-        if weak_stocks:
-            for i, stock in enumerate(weak_stocks, 1):
-                message += f"⚠️ {i}. {stock['code']} {stock['name']}\n"
-            
-                # 現價和跌幅
-                current_price = stock.get('current_price', 0)
-                analysis = stock.get('analysis', {})
-                change_percent = analysis.get('change_percent', 0)
-            
-                message += f"💰 現價: {current_price} 元 {format_price_change(change_percent)}\n"
-            
-                # 成交量
-                trade_value = stock.get('trade_value', 0)
-                message += f"💵 成交金額: {format_number(trade_value)}\n"
-            
-                # 法人賣超資訊
-                foreign_info = format_foreign_net_buy(analysis.get('foreign_net_buy', 0))
-                if foreign_info and '賣超' in foreign_info:
-                    message += f"{foreign_info}\n"
-            
-                # 警報原因
-                message += f"🚨 警報原因: {stock['alert_reason']}\n"
-            
-                # 風險提示
-                message += f"⚠️ 風險提示: 建議謹慎操作，嚴設停損\n\n"
-        else:
-            message += "今日無極弱股警示\n\n"
-    
-        # 風險提示
-        message += "【投資提醒】\n"
-        message += "⚠️ 本報告僅供參考，不構成投資建議\n"
-        message += "⚠️ 股市有風險，投資需謹慎\n"
-        message += "⚠️ 長線投資重視基本面，短線操作注重技術面\n"
-        message += "⚠️ 建議設定停損點，控制投資風險\n\n"
-        message += "祝您投資順利！💰"
-    
-        # 生成HTML格式（增強版）
-        html_body = generate_enhanced_html_report(strategies_data, time_slot, today)
-    
-        subject = f"【{time_slot}分析報告】- {today}"
-        send_notification(message, subject, html_body)
+    success = send_notification(
+        message=test_message,
+        subject="📧 台股分析系統 - 增強版通知測試",
+        urgent=False
+    )
 
-    def generate_enhanced_html_report(strategies_data, time_slot, date):
-        """生成增強版HTML報告（重點顯示長線基本面資訊）"""
-    
-        short_term_stocks = strategies_data.get("short_term", [])
-        long_term_stocks = strategies_data.get("long_term", [])
-        weak_stocks = strategies_data.get("weak_stocks", [])
+    if success:
+        log_event("✅ 增強版通知測試成功！請檢查您的郵箱")
+    else:
+        log_event("❌ 增強版通知測試失敗，請檢查配置", 'error')
+
+    return success
+
+if __name__ == "__main__":
+    # 初始化
+    init()
+
+    # 執行測試
+    print("=" * 50)
+    print("增強版通知系統測試")
+    print("=" * 50)
+
+    test_notification()
+
+    print("\n" + "=" * 50)
+    print("增強功能說明:")
+    print("=" * 50)
+    print("1. 長線推薦加強基本面顯示")
+    print("2. EPS成長率、殖利率、ROE等關鍵指標")
+    print("3. 法人買賣超資訊詳細顯示")
+    print("4. HTML郵件格式全面升級")
+    print("5. 區分短線技術面和長線基本面重點")
+    print("=" * 50)
