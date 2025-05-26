@@ -617,4 +617,7 @@ class EnhancedStockBot:
             elif trust_net < -1000:
                 inst_score -= 1
 
-
+            return {
+                "inst_score": inst_score,
+                "available": True
+            }
