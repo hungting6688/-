@@ -192,9 +192,7 @@ jobs:
         
         # 執行分析
         if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-          # 心跳檢測
-          python -c "import sys; sys.path.append('.'); exec(open('heartbeat_check.py').read())" || \
-          python -c "import notifier; notifier.init(); notifier.send_heartbeat()"
+          python heartbeat_check.py
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
           python run_optimized_system.py test
         else
@@ -210,8 +208,7 @@ jobs:
         
         # 執行標準版分析
         if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-          # 標準版心跳檢測
-          python -c "import notifier; notifier.init(); notifier.send_heartbeat()"
+          python heartbeat_check.py
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
           python test_notification.py --test all
         else
