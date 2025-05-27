@@ -1,17 +1,17 @@
-name: Taiwan Stock Analysis Bot - Enhanced Long-term Fundamental Analysis
+name: Taiwan Stock Analysis Bot - Enhanced Long-term Fundamental Analysis (Updated Schedule)
 
 on:
   schedule:
-    # 早盤掃描 - 台灣時間 09:00 (UTC+8) = UTC 01:00
-    - cron: '0 1 * * 1-5'
+    # 早盤掃描 - 台灣時間 09:30 (UTC+8) = UTC 01:30 (延後使用當日數據)
+    - cron: '30 1 * * 1-5'
     # 盤中掃描 - 台灣時間 10:30 (UTC+8) = UTC 02:30  
     - cron: '30 2 * * 1-5'
     # 午間掃描 - 台灣時間 12:30 (UTC+8) = UTC 04:30
     - cron: '30 4 * * 1-5'
     # 盤後掃描 - 台灣時間 15:00 (UTC+8) = UTC 07:00 (重點長線分析)
     - cron: '0 7 * * 1-5'
-    # 週末總結 - 台灣時間週五 17:00 (UTC+8) = UTC 09:00 (深度長線分析)
-    - cron: '0 9 * * 5'
+    # 週末總結 - 台灣時間週六 12:00 (UTC+8) = UTC 04:00 (改到週六中午)
+    - cron: '0 4 * * 6'
     # 心跳檢測 - 台灣時間 08:30 (UTC+8) = UTC 00:30
     - cron: '30 0 * * *'
   
@@ -47,6 +47,12 @@ env:
   EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
   EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
   EMAIL_USE_TLS: 'True'
+  
+  # LINE配置 (從 GitHub Secrets 獲取)
+  LINE_ENABLED: 'True'
+  LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+  LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+  LINE_GROUP_ID: ${{ secrets.LINE_GROUP_ID }}
   
   # 優化版系統配置
   ENHANCED_ANALYSIS: 'True'
@@ -105,13 +111,30 @@ jobs:
         fi
         
         # 檢查必要配置
+        CONFIG_VALID=true
+        
+        # 檢查郵件配置
         if [ -z "$EMAIL_SENDER" ] || [ -z "$EMAIL_PASSWORD" ] || [ -z "$EMAIL_RECEIVER" ]; then
           echo "郵件配置不完整"
-          echo "EMAIL_CONFIG_VALID=false" >> $GITHUB_ENV
+          CONFIG_VALID=false
         else
           echo "郵件配置檢查通過"
-          echo "EMAIL_CONFIG_VALID=true" >> $GITHUB_ENV
         fi
+        
+        # 檢查LINE配置
+        if [ "$LINE_ENABLED" = "True" ]; then
+          if [ -z "$LINE_CHANNEL_ACCESS_TOKEN" ]; then
+            echo "LINE_CHANNEL_ACCESS_TOKEN 未設置"
+            CONFIG_VALID=false
+          elif [ -z "$LINE_USER_ID" ] && [ -z "$LINE_GROUP_ID" ]; then
+            echo "LINE_USER_ID 或 LINE_GROUP_ID 至少要設置一個"
+            CONFIG_VALID=false
+          else
+            echo "LINE配置檢查通過"
+          fi
+        fi
+        
+        echo "CONFIG_VALID=$CONFIG_VALID" >> $GITHUB_ENV
         
     - name: Determine Analysis Type
       run: |
@@ -127,19 +150,20 @@ jobs:
           CURRENT_DAY=$(TZ=Asia/Taipei date +%u)
           
           echo "當前時間: $(TZ=Asia/Taipei date)"
-          echo "小時: $CURRENT_HOUR, 星期: $CURRENT_DAY"
+          echo "小時: $CURRENT_HOUR, 星期: $CURRENT_DAY, 星期六代碼: 6"
           
           case $CURRENT_HOUR in
-            01) ANALYSIS_TYPE="morning_scan" ;;
-            02) ANALYSIS_TYPE="mid_morning_scan" ;;
-            04) ANALYSIS_TYPE="mid_day_scan" ;;
-            07) ANALYSIS_TYPE="afternoon_scan" ;;
-            09) if [ $CURRENT_DAY -eq 5 ]; then
-                  ANALYSIS_TYPE="weekly_summary"
-                else
-                  ANALYSIS_TYPE="afternoon_scan"
-                fi ;;
-            00) ANALYSIS_TYPE="heartbeat" ;;
+            01) ANALYSIS_TYPE="morning_scan" ;;       # 9:30 台灣時間
+            02) ANALYSIS_TYPE="mid_morning_scan" ;;   # 10:30 台灣時間
+            04) 
+              if [ $CURRENT_DAY -eq 6 ]; then
+                ANALYSIS_TYPE="weekly_summary"        # 週六12:00 台灣時間
+              else
+                ANALYSIS_TYPE="mid_day_scan"          # 平日12:30 台灣時間
+              fi
+              ;;
+            07) ANALYSIS_TYPE="afternoon_scan" ;;     # 15:00 台灣時間
+            00) ANALYSIS_TYPE="heartbeat" ;;          # 8:30 台灣時間
             *) ANALYSIS_TYPE="afternoon_scan" ;;
           esac
           
@@ -150,13 +174,18 @@ jobs:
         echo "將執行: $ANALYSIS_TYPE"
         
     - name: Run Optimized Stock Analysis
-      if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'true' && env.EMAIL_CONFIG_VALID == 'true'
+      if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'true' && env.CONFIG_VALID == 'true'
       run: |
-        echo "執行優化版股市分析..."
+        echo "執行優化版股市分析（支援EMAIL + LINE雙推播）..."
         echo "分析類型: $ANALYSIS_TYPE"
         
-        # 顯示優化版特色
-        echo "優化版特色:"
+        # 顯示更新的特色
+        echo "🆕 更新內容："
+        echo "  📅 早盤分析延後到 9:30，使用當日即時數據"
+        echo "  📱 啟用LINE推播功能，與EMAIL並行運作"
+        echo "  📊 週末總結改到週六中午12:00"
+        echo ""
+        echo "優化版特色："
         echo "  長線推薦基本面權重提升 140%"
         echo "  法人買賣權重提升 33%"
         echo "  殖利率 > 2.5% 優先推薦"
@@ -166,27 +195,27 @@ jobs:
         # 根據分析類型顯示預期結果
         case $ANALYSIS_TYPE in
           "morning_scan")
-            echo "早盤掃描: 200支股票，短線推薦優先"
+            echo "早盤掃描 (9:30): 200支股票，使用當日數據，提升分析準確度"
             ;;
           "mid_morning_scan")
-            echo "盤中掃描: 300支股票，短線推薦優先"
+            echo "盤中掃描 (10:30): 300支股票，短線推薦優先"
             ;;
           "mid_day_scan")
-            echo "午間掃描: 300支股票，混合分析"
+            echo "午間掃描 (12:30): 300支股票，混合分析"
             ;;
           "afternoon_scan")
-            echo "盤後掃描: 1000支股票，長線推薦增加至4支"
+            echo "盤後掃描 (15:00): 1000支股票，長線推薦增加至4支"
             echo "重點關注基本面優質股"
             ;;
           "weekly_summary")
-            echo "週末總結: 1000支股票，長線推薦增加至5支"
+            echo "週末總結 (週六12:00): 1000支股票，長線推薦增加至5支"
             echo "深度挖掘基本面優質股，最佳長線分析時段"
             ;;
           "heartbeat")
             echo "系統心跳檢測"
             ;;
           "test_notification")
-            echo "測試通知功能"
+            echo "測試通知功能（EMAIL + LINE）"
             ;;
         esac
         
@@ -194,13 +223,21 @@ jobs:
         if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
           python heartbeat_check.py
         elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
-          python run_optimized_system.py test
+          echo "測試EMAIL + LINE雙推播..."
+          python test_notification.py --test all
+          python -c "
+import sys
+sys.path.append('.')
+from line_notifier import test_line_notification
+print('🧪 測試LINE推播功能')
+test_line_notification()
+"
         else
           python run_optimized_system.py run --slot $ANALYSIS_TYPE
         fi
         
     - name: Run Standard Stock Analysis
-      if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'false' && env.EMAIL_CONFIG_VALID == 'true'
+      if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'false' && env.CONFIG_VALID == 'true'
       run: |
         echo "執行標準版股市分析..."
         echo "優化版系統不可用，使用標準版"
@@ -224,24 +261,31 @@ jobs:
         fi
         
     - name: Handle Missing Configuration
-      if: env.EMAIL_CONFIG_VALID == 'false'
+      if: env.CONFIG_VALID == 'false'
       run: |
-        echo "郵件配置不完整，無法執行分析"
+        echo "系統配置不完整，無法執行分析"
         echo ""
         echo "請在 GitHub Repository Settings > Secrets 中設定："
+        echo "📧 EMAIL配置："
         echo "  EMAIL_SENDER - 發件人郵箱"
         echo "  EMAIL_PASSWORD - 郵箱應用程式密碼"
         echo "  EMAIL_RECEIVER - 收件人郵箱"
         echo ""
+        echo "📱 LINE配置（新增）："
+        echo "  LINE_CHANNEL_ACCESS_TOKEN - LINE Bot頻道存取權杖"
+        echo "  LINE_USER_ID - LINE用戶ID（個人推播）"
+        echo "  LINE_GROUP_ID - LINE群組ID（群組推播，可選）"
+        echo ""
         echo "Gmail 用戶請使用應用程式密碼（16位數）"
-        echo "設定步驟："
-        echo "  1. 啟用 Google 兩步驟驗證"
-        echo "  2. 生成應用程式密碼"
-        echo "  3. 將16位密碼設為 EMAIL_PASSWORD"
+        echo "LINE Bot 設定步驟："
+        echo "  1. 前往 LINE Developers Console"
+        echo "  2. 建立新的 Messaging API 頻道"
+        echo "  3. 取得 Channel Access Token"
+        echo "  4. 取得用戶ID或群組ID"
         echo ""
         
         # 創建提醒檔案
-        echo "郵件配置缺失 - $(date)" > missing_config.log
+        echo "配置缺失 - $(date)" > missing_config.log
         
         exit 1
         
@@ -252,20 +296,44 @@ jobs:
         echo "==============================================="
         echo "執行時間: $(TZ=Asia/Taipei date)"
         echo "分析類型: $ANALYSIS_TYPE"
-        echo "系統版本: $([ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ] && echo "優化版（長線基本面強化）" || echo "標準版")"
-        echo "通知狀態: $([ "$EMAIL_CONFIG_VALID" = "true" ] && echo "已發送" || echo "配置錯誤")"
+        echo "系統版本: $([ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ] && echo "優化版（長線基本面強化 + LINE推播）" || echo "標準版")"
+        
+        # 檢查通知狀態
+        if [ "$CONFIG_VALID" = "true" ]; then
+          echo "📧 EMAIL通知: 已發送"
+          if [ "$LINE_ENABLED" = "True" ]; then
+            echo "📱 LINE推播: 已發送"
+          else
+            echo "📱 LINE推播: 未啟用"
+          fi
+        else
+          echo "🚫 通知狀態: 配置錯誤"
+        fi
+        
         echo ""
+        echo "🆕 更新功能："
+        echo "  📅 早盤分析時間: 9:00 → 9:30（使用當日數據）"
+        echo "  📱 新增LINE推播功能，與EMAIL並行"
+        echo "  📊 週末總結時間: 週五17:00 → 週六12:00"
         
         if [ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ]; then
+          echo ""
           echo "優化版功能已啟用："
           echo "  長線推薦基本面分析強化"
           echo "  重點關注：殖利率、EPS成長、法人買超"
           echo "  推薦標準：更嚴格的基本面篩選"
-          echo "  通知優化：詳細基本面資訊顯示"
+          echo "  雙推播：EMAIL + LINE同步通知"
         fi
         
         # 根據分析類型顯示特色
         case $ANALYSIS_TYPE in
+          "morning_scan")
+            echo ""
+            echo "🌅 早盤分析特色："
+            echo "  延後到9:30確保當日數據完整"
+            echo "  200支股票深度分析"
+            echo "  技術面即時反應市場開盤狀況"
+            ;;
           "afternoon_scan"|"weekly_summary")
             echo ""
             echo "長線分析重點："
@@ -299,12 +367,12 @@ jobs:
         echo "失敗時間: $(TZ=Asia/Taipei date)"
         echo ""
         echo "可能原因："
-        echo "  1. 郵件配置錯誤"
+        echo "  1. EMAIL或LINE配置錯誤"
         echo "  2. 網路連線問題"
         echo "  3. 台股資料源異常"
         echo "  4. 程式碼錯誤"
         echo ""
         echo "建議檢查："
-        echo "  - GitHub Secrets 郵件設定"
+        echo "  - GitHub Secrets 通知設定（EMAIL + LINE）"
         echo "  - 程式碼是否正確"
         echo "  - 執行日誌錯誤訊息"
