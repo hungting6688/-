@@ -1,6 +1,7 @@
 """
 enhanced_config.py - 台股分析機器人的優化配置檔案
 包含多種市場環境與行業分析配置
+更新：早盤延後到9:30、啟用LINE推播、週末總結改到週六12:00
 """
 import os
 import sys
@@ -36,24 +37,32 @@ EMAIL_CONFIG = {
     'use_tls': os.getenv('EMAIL_USE_TLS', 'True').lower() in ('true', '1', 't')
 }
 
-# 通知渠道配置
+# LINE通知配置
+LINE_CONFIG = {
+    'enabled': os.getenv('LINE_ENABLED', 'True').lower() in ('true', '1', 't'),  # 默認啟用
+    'channel_access_token': os.getenv('LINE_CHANNEL_ACCESS_TOKEN'),
+    'user_id': os.getenv('LINE_USER_ID'),
+    'group_id': os.getenv('LINE_GROUP_ID'),  # 支援群組推播
+    'api_url': 'https://api.line.me/v2/bot/message/push'
+}
+
+# 通知渠道配置（啟用LINE）
 NOTIFICATION_CHANNELS = {
     'email': {
         'priority': 1,  # 優先級，數字越小優先級越高
         'enabled': True,
         'config': EMAIL_CONFIG
     },
+    'line': {
+        'priority': 2,  # LINE為第二優先級
+        'enabled': LINE_CONFIG['enabled'],
+        'config': LINE_CONFIG
+    },
     'telegram': {
-        'priority': 2,
+        'priority': 3,
         'enabled': os.getenv('TELEGRAM_ENABLED', 'False').lower() in ('true', '1', 't'),
         'bot_token': os.getenv('TELEGRAM_BOT_TOKEN'),
         'chat_id': os.getenv('TELEGRAM_CHAT_ID')
-    },
-    'line': {
-        'priority': 3,
-        'enabled': os.getenv('LINE_ENABLED', 'False').lower() in ('true', '1', 't'),
-        'channel_access_token': os.getenv('LINE_CHANNEL_ACCESS_TOKEN'),
-        'user_id': os.getenv('LINE_USER_ID')
     }
 }
 
@@ -87,7 +96,7 @@ MARKET_ENVIRONMENTS = {
             }
         },
         'recommendation_limits': {  # 不同時段推薦的股票數量
-            'morning_scan': {      # 9:00
+            'morning_scan': {      # 9:30（延後）
                 'long_term': 2,
                 'short_term': 4,   # 牛市加大短線推薦數量
                 'weak_stocks': 1   # 減少弱勢股數量
@@ -113,7 +122,7 @@ MARKET_ENVIRONMENTS = {
             }
         },
         'recommendation_limits': {  # 不同時段推薦的股票數量
-            'morning_scan': {      # 9:00
+            'morning_scan': {      # 9:30（延後）
                 'long_term': 3,    # 熊市增加長線推薦
                 'short_term': 2,   # 減少短線推薦
                 'weak_stocks': 3   # 增加弱勢股警示
@@ -195,14 +204,14 @@ STOCK_ANALYSIS = {
     'short_term_days': 5,  # 短線考慮天數
     'long_term_days': 30,  # 長線考慮天數
     'scan_limits': {  # 不同時段掃描的股票數量
-        'morning_scan': 100,       # 9:00掃描股票數量
+        'morning_scan': 200,       # 9:30掃描股票數量（延後後可增加數量）
         'mid_morning_scan': 150,   # 10:30掃描股票數量
         'mid_day_scan': 150,       # 12:30掃描股票數量
         'afternoon_scan': 450,     # 15:00掃描股票數量
     },
     'recommendation_limits': {  # 不同時段推薦的股票數量
-        'morning_scan': {           # 9:00
-            'long_term': 2,
+        'morning_scan': {           # 9:30（延後後使用當日數據）
+            'long_term': 3,         # 增加長線推薦（當日數據品質更好）
             'short_term': 3,
             'weak_stocks': 2
         },
@@ -261,13 +270,13 @@ MARKET_HOURS = {
     'lunch_break_end': '13:00',
 }
 
-# 分析與通知時間
+# 分析與通知時間（更新排程）
 NOTIFICATION_SCHEDULE = {
-    'morning_scan': '09:00',       # 早盤掃描
+    'morning_scan': '09:30',       # 早盤掃描（延後到9:30）
     'mid_morning_scan': '10:30',   # 盤中掃描
     'mid_day_scan': '12:30',       # 午間掃描
     'afternoon_scan': '15:00',     # 盤後掃描
-    'weekly_summary': '17:00',     # 週末總結 (只用時間部分)
+    'weekly_summary': '12:00',     # 週末總結改到週六中午12:00
     'heartbeat': '08:30',          # 心跳檢測
 }
 
@@ -290,6 +299,13 @@ def validate_config():
         for key in ['sender', 'password', 'receiver']:
             if not EMAIL_CONFIG[key]:
                 missing.append(f'EMAIL_{key.upper()}')
+    
+    # 檢查LINE配置
+    if LINE_CONFIG['enabled']:
+        if not LINE_CONFIG['channel_access_token']:
+            missing.append('LINE_CHANNEL_ACCESS_TOKEN')
+        if not LINE_CONFIG['user_id'] and not LINE_CONFIG['group_id']:
+            missing.append('LINE_USER_ID or LINE_GROUP_ID')
     
     return missing
 
@@ -375,7 +391,16 @@ if __name__ == '__main__':
     print(f"緩存目錄: {CACHE_DIR}")
     print(f"數據目錄: {DATA_DIR}")
     print(f"郵件通知: {'啟用' if EMAIL_CONFIG['enabled'] else '停用'}")
+    print(f"LINE通知: {'啟用' if LINE_CONFIG['enabled'] else '停用'}")
     print(f"文件備份: {'啟用' if FILE_BACKUP['enabled'] else '停用'}")
+    
+    # 顯示更新的排程時間
+    print(f"\n更新的排程時間:")
+    print(f"早盤掃描: {NOTIFICATION_SCHEDULE['morning_scan']} (使用當日數據)")
+    print(f"盤中掃描: {NOTIFICATION_SCHEDULE['mid_morning_scan']}")
+    print(f"午間掃描: {NOTIFICATION_SCHEDULE['mid_day_scan']}")
+    print(f"盤後掃描: {NOTIFICATION_SCHEDULE['afternoon_scan']}")
+    print(f"週末總結: 週六 {NOTIFICATION_SCHEDULE['weekly_summary']}")
     
     # 顯示當前市場環境
     market_env = os.getenv('MARKET_ENVIRONMENT', 'neutral')
