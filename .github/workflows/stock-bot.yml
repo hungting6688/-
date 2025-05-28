@@ -270,24 +270,20 @@ sys.path.append('.')
 from twse_data_fetcher import TWStockDataFetcher
 import notifier
 
-# 執行基礎分析
 print('📊 執行基礎股票分析...')
 fetcher = TWStockDataFetcher()
 notifier.init()
 
-# 獲取股票數據
-stocks = fetcher.get_stocks_by_time_slot('$ANALYSIS_TYPE')
+stocks = fetcher.get_stocks_by_time_slot('${ANALYSIS_TYPE}')
 print(f'✅ 獲取 {len(stocks)} 支股票')
 
-# 簡單推薦邏輯
 recommendations = {
     'short_term': stocks[:3] if len(stocks) >= 3 else stocks,
     'long_term': stocks[3:6] if len(stocks) >= 6 else [],
     'weak_stocks': []
 }
 
-# 發送通知
-notifier.send_combined_recommendations(recommendations, '$ANALYSIS_TYPE')
+notifier.send_combined_recommendations(recommendations, '${ANALYSIS_TYPE}')
 print('📧 分析完成，通知已發送')
 "
           fi
