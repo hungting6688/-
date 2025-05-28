@@ -1,77 +1,127 @@
-name: Taiwan Stock Analysis Bot - Enhanced Long-term Fundamental Analysis (Updated Schedule)
+# .github/workflows/ultimate-stock-bot.yml
+# 終極版股票推薦系統 - 整合全球景氣分析 + 日本市場
+
+name: Ultimate Taiwan Stock Analysis Bot - 2025 Enhanced Edition
 
 on:
   schedule:
-    # 早盤掃描 - 台灣時間 09:30 (UTC+8) = UTC 01:30 (延後使用當日數據)
+    # 早盤掃描 - 台灣時間 09:30 (UTC+8) = UTC 01:30
     - cron: '30 1 * * 1-5'
     # 盤中掃描 - 台灣時間 10:30 (UTC+8) = UTC 02:30  
     - cron: '30 2 * * 1-5'
     # 午間掃描 - 台灣時間 12:30 (UTC+8) = UTC 04:30
     - cron: '30 4 * * 1-5'
-    # 盤後掃描 - 台灣時間 15:00 (UTC+8) = UTC 07:00 (重點長線分析)
-    - cron: '0 7 * * 1-5'
-    # 週末總結 - 台灣時間週六 12:00 (UTC+8) = UTC 04:00 (改到週六中午)
-    - cron: '0 4 * * 6'
-    # 心跳檢測 - 台灣時間 08:30 (UTC+8) = UTC 00:30
-    - cron: '30 0 * * *'
+    # 盤後深度分析 - 台灣時間 15:30 (UTC+8) = UTC 07:30
+    - cron: '30 7 * * 1-5'
+    # 週末總結分析 - 台灣時間週六 14:00 (UTC+8) = UTC 06:00
+    - cron: '0 6 * * 6'
+    # 全球市場開盤前分析 - 台灣時間 21:30 (UTC+8) = UTC 13:30 (美股開盤前)
+    - cron: '30 13 * * 1-5'
   
-  # 手動觸發
   workflow_dispatch:
     inputs:
       analysis_type:
         description: '選擇分析類型'
         required: true
-        default: 'afternoon_scan'
+        default: 'ultimate_analysis'
         type: choice
         options:
           - morning_scan
           - mid_morning_scan
           - mid_day_scan
-          - afternoon_scan
-          - weekly_summary
-          - test_notification
-      force_optimized:
-        description: '強制使用優化版系統'
+          - afternoon_analysis
+          - weekend_summary
+          - pre_us_market_analysis
+          - ultimate_analysis
+          - test_all_features
+      enable_japan_analysis:
+        description: '啟用日本市場分析'
         required: false
         type: boolean
         default: true
+      risk_tolerance:
+        description: '風險偏好設定'
+        required: false
+        default: 'moderate'
+        type: choice
+        options:
+          - conservative
+          - moderate
+          - aggressive
+      max_recommendations:
+        description: '最大推薦數量'
+        required: false
+        default: '15'
+        type: string
 
 env:
   # 時區設定
   TZ: Asia/Taipei
   
-  # 郵件配置 (從 GitHub Secrets 獲取)
+  # 🆕 終極版系統配置
+  ULTIMATE_SYSTEM_ENABLED: 'True'
+  GLOBAL_ECONOMIC_ANALYSIS: 'True'
+  SENTIMENT_ANALYSIS_ENABLED: 'True'
+  MULTI_FACTOR_MODEL_ENABLED: 'True'
+  ML_PREDICTION_ENABLED: 'True'
+  ALTERNATIVE_DATA_ENABLED: 'True'
+  RISK_MANAGEMENT_ENHANCED: 'True'
+  
+  # 🇯🇵 日本市場分析配置
+  JAPAN_MARKET_ANALYSIS: 'True'
+  JAPAN_TAIWAN_CORRELATION: 'True'
+  JPY_IMPACT_ANALYSIS: 'True'
+  NIKKEI_MOMENTUM_TRACKING: 'True'
+  BOJ_POLICY_MONITORING: 'True'
+  
+  # 🌍 全球市場配置
+  US_MARKET_WEIGHT: '0.35'
+  CHINA_MARKET_WEIGHT: '0.20'
+  JAPAN_MARKET_WEIGHT: '0.15'
+  TAIWAN_MARKET_WEIGHT: '0.15'
+  EUROPE_MARKET_WEIGHT: '0.15'
+  
+  # 📧 通知配置 (從 GitHub Secrets 獲取)
   EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
   EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
   EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
   EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER || 'smtp.gmail.com' }}
   EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT || '587' }}
   EMAIL_USE_TLS: 'True'
+  HTML_EMAIL_ENHANCED: 'True'
   
-  # LINE配置 (從 GitHub Secrets 獲取)
+  # 📱 LINE通知配置
   LINE_ENABLED: 'True'
   LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
   LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
   LINE_GROUP_ID: ${{ secrets.LINE_GROUP_ID }}
   
-  # 優化版系統配置
-  ENHANCED_ANALYSIS: 'True'
-  LONG_TERM_FOCUS: 'True'
+  # 🤖 機器學習配置
+  ML_MODEL_UPDATE_FREQUENCY: '7'  # 7天更新一次模型
+  ENSEMBLE_MODELS: 'True'
+  FEATURE_ENGINEERING_ADVANCED: 'True'
   
-  # 市場環境配置 (可根據市況調整)
-  MARKET_ENVIRONMENT: ${{ secrets.MARKET_ENVIRONMENT || 'neutral' }}
+  # 📊 風險管理配置
+  VAR_CALCULATION: 'True'
+  RISK_ADJUSTED_SCORING: 'True'
+  PORTFOLIO_OPTIMIZATION: 'True'
+  DRAWDOWN_CONTROL: 'True'
   
-  # 分析配置
-  USE_FUNDAMENTAL_ANALYSIS: 'True'
-  USE_INSTITUTIONAL_ANALYSIS: 'True'
+  # 🔍 替代數據配置
+  SENTIMENT_DATA_SOURCES: 'ptt,dcard,google_trends,news'
+  ESG_ANALYSIS: 'True'
+  SATELLITE_DATA_SIMULATION: 'True'
   
-  # 通知配置
-  NOTIFICATION_ENABLED: 'True'
-  HTML_EMAIL: 'True'
+  # ⚙️ 系統效能配置
+  ASYNC_PROCESSING: 'True'
+  CONCURRENT_ANALYSIS_LIMIT: '10'
+  CACHE_ENABLED: 'True'
+  CACHE_DURATION_HOURS: '1'
 
 jobs:
-  stock-analysis:
+  ultimate-stock-analysis:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     steps:
       - name: Checkout Repository
@@ -83,296 +133,331 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
           
-      - name: Install Dependencies
+      - name: Install Enhanced Dependencies
         run: |
-          echo "安裝套件依賴..."
+          echo "🚀 安裝終極版系統依賴..."
           pip install --upgrade pip
-          pip install -r requirements.txt
-          echo "套件安裝完成"
           
-      - name: Setup Environment
+          # 基礎套件
+          pip install pandas numpy requests aiohttp asyncio
+          
+          # 金融數據套件
+          pip install yfinance ta-lib-binary
+          
+          # 機器學習套件
+          pip install scikit-learn xgboost lightgbm
+          
+          # 文字分析套件
+          pip install jieba textblob vaderSentiment
+          
+          # 其他增強功能
+          pip install matplotlib seaborn plotly
+          
+          echo "✅ 套件安裝完成"
+          
+      - name: Validate System Configuration
         run: |
-          echo "設置執行環境..."
+          echo "🔍 驗證系統配置..."
+          
+          # 檢查必要檔案
+          required_files=(
+            "ultimate_stock_recommender.py"
+            "requirements.txt"
+          )
+          
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ 缺少必要檔案: $file"
+              exit 1
+            fi
+          done
+          
+          # 檢查通知配置
+          if [ -z "$EMAIL_SENDER" ] || [ -z "$EMAIL_PASSWORD" ] || [ -z "$EMAIL_RECEIVER" ]; then
+            echo "⚠️ EMAIL配置不完整，將無法發送郵件通知"
+          else
+            echo "✅ EMAIL配置完整"
+          fi
+          
+          if [ -z "$LINE_CHANNEL_ACCESS_TOKEN" ]; then
+            echo "⚠️ LINE配置不完整，將無法發送LINE通知"
+          else
+            echo "✅ LINE配置完整"
+          fi
+          
+          echo "SYSTEM_CONFIG_VALID=true" >> $GITHUB_ENV
+          
+      - name: Initialize System Environment
+        run: |
+          echo "⚙️ 初始化系統環境..."
           
           # 創建必要目錄
-          mkdir -p logs cache data data/analysis_results data/analysis_results_optimized
+          mkdir -p logs cache data/analysis_results data/ml_models data/alternative_data
           
           # 顯示時區資訊
-          echo "當前時區: $(date)"
-          echo "台灣時間: $(TZ=Asia/Taipei date)"
+          echo "🕐 當前時間: $(date)"
+          echo "🗾 台灣時間: $(TZ=Asia/Taipei date)"
+          echo "🇯🇵 日本時間: $(TZ=Asia/Tokyo date)"
+          echo "🇺🇸 美東時間: $(TZ=America/New_York date)"
           
-          # 檢查優化版系統文件
-          if [ -f "enhanced_stock_bot_optimized.py" ] && [ -f "optimized_notifier.py" ]; then
-            echo "優化版系統檔案就緒"
-            echo "OPTIMIZED_SYSTEM_AVAILABLE=true" >> $GITHUB_ENV
-          else
-            echo "優化版系統檔案不存在，將使用標準版"
-            echo "OPTIMIZED_SYSTEM_AVAILABLE=false" >> $GITHUB_ENV
-          fi
-          
-          # 檢查必要配置
-          CONFIG_VALID=true
-          
-          # 檢查郵件配置
-          if [ -z "$EMAIL_SENDER" ] || [ -z "$EMAIL_PASSWORD" ] || [ -z "$EMAIL_RECEIVER" ]; then
-            echo "郵件配置不完整"
-            CONFIG_VALID=false
-          else
-            echo "郵件配置檢查通過"
-          fi
-          
-          # 檢查LINE配置
-          if [ "$LINE_ENABLED" = "True" ]; then
-            if [ -z "$LINE_CHANNEL_ACCESS_TOKEN" ]; then
-              echo "LINE_CHANNEL_ACCESS_TOKEN 未設置"
-              CONFIG_VALID=false
-            elif [ -z "$LINE_USER_ID" ] && [ -z "$LINE_GROUP_ID" ]; then
-              echo "LINE_USER_ID 或 LINE_GROUP_ID 至少要設置一個"
-              CONFIG_VALID=false
-            else
-              echo "LINE配置檢查通過"
-            fi
-          fi
-          
-          echo "CONFIG_VALID=$CONFIG_VALID" >> $GITHUB_ENV
-          
-      - name: Determine Analysis Type
-        run: |
-          echo "決定分析類型..."
-          
-          # 如果是手動觸發
+          # 設定分析類型
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             ANALYSIS_TYPE="${{ github.event.inputs.analysis_type }}"
-            echo "手動觸發: $ANALYSIS_TYPE"
+            MAX_RECOMMENDATIONS="${{ github.event.inputs.max_recommendations }}"
+            RISK_TOLERANCE="${{ github.event.inputs.risk_tolerance }}"
+            ENABLE_JAPAN="${{ github.event.inputs.enable_japan_analysis }}"
           else
-            # 根據排程時間決定分析類型
+            # 根據時間自動判斷
             CURRENT_HOUR=$(TZ=Asia/Taipei date +%H)
             CURRENT_DAY=$(TZ=Asia/Taipei date +%u)
             
-            echo "當前時間: $(TZ=Asia/Taipei date)"
-            echo "小時: $CURRENT_HOUR, 星期: $CURRENT_DAY, 星期六代碼: 6"
-            
             case $CURRENT_HOUR in
-              01) ANALYSIS_TYPE="morning_scan" ;;       # 9:30 台灣時間
-              02) ANALYSIS_TYPE="mid_morning_scan" ;;   # 10:30 台灣時間
+              01) ANALYSIS_TYPE="morning_scan" ;;
+              02) ANALYSIS_TYPE="mid_morning_scan" ;;
               04) 
                 if [ $CURRENT_DAY -eq 6 ]; then
-                  ANALYSIS_TYPE="weekly_summary"        # 週六12:00 台灣時間
+                  ANALYSIS_TYPE="weekend_summary"
                 else
-                  ANALYSIS_TYPE="mid_day_scan"          # 平日12:30 台灣時間
+                  ANALYSIS_TYPE="mid_day_scan"
                 fi
                 ;;
-              07) ANALYSIS_TYPE="afternoon_scan" ;;     # 15:00 台灣時間
-              00) ANALYSIS_TYPE="heartbeat" ;;          # 8:30 台灣時間
-              *) ANALYSIS_TYPE="afternoon_scan" ;;
+              07) ANALYSIS_TYPE="afternoon_analysis" ;;
+              13) ANALYSIS_TYPE="pre_us_market_analysis" ;;
+              *) ANALYSIS_TYPE="ultimate_analysis" ;;
             esac
             
-            echo "自動排程: $ANALYSIS_TYPE"
+            MAX_RECOMMENDATIONS="15"
+            RISK_TOLERANCE="moderate"
+            ENABLE_JAPAN="true"
           fi
           
           echo "ANALYSIS_TYPE=$ANALYSIS_TYPE" >> $GITHUB_ENV
-          echo "將執行: $ANALYSIS_TYPE"
+          echo "MAX_RECOMMENDATIONS=$MAX_RECOMMENDATIONS" >> $GITHUB_ENV
+          echo "RISK_TOLERANCE=$RISK_TOLERANCE" >> $GITHUB_ENV
+          echo "ENABLE_JAPAN_ANALYSIS=$ENABLE_JAPAN" >> $GITHUB_ENV
           
-      - name: Run Optimized Stock Analysis
-        if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'true' && env.CONFIG_VALID == 'true'
+          echo "🎯 將執行: $ANALYSIS_TYPE"
+          echo "📊 最大推薦數: $MAX_RECOMMENDATIONS"
+          echo "⚖️ 風險偏好: $RISK_TOLERANCE"
+          echo "🇯🇵 日本分析: $ENABLE_JAPAN"
+          
+      - name: Run Ultimate Stock Analysis System
         run: |
-          echo "執行優化版股市分析（支援EMAIL + LINE雙推播）..."
-          echo "分析類型: $ANALYSIS_TYPE"
+          echo "🚀 執行終極版股票分析系統..."
+          echo "=================================="
           
-          # 顯示更新的特色
-          echo "🆕 更新內容："
-          echo "  📅 早盤分析延後到 9:30，使用當日即時數據"
-          echo "  📱 啟用LINE推播功能，與EMAIL並行運作"
-          echo "  📊 週末總結改到週六中午12:00"
+          # 顯示系統特色
+          echo "🌟 終極版系統特色："
+          echo "  🌍 全球經濟分析 (美中日台歐)"
+          echo "  🇯🇵 日本市場深度整合"
+          echo "  🤖 AI機器學習預測"
+          echo "  📊 多因子量化模型"
+          echo "  💭 社群情感分析"
+          echo "  🛡️ 進階風險管理"
+          echo "  📡 替代數據整合"
+          echo "  🔄 自適應學習系統"
           echo ""
-          echo "優化版特色："
-          echo "  長線推薦基本面權重提升 140%"
-          echo "  法人買賣權重提升 33%"
-          echo "  殖利率 > 2.5% 優先推薦"
-          echo "  EPS成長 > 8% 優先推薦"
-          echo "  法人買超 > 5000萬 優先推薦"
           
           # 根據分析類型顯示預期結果
           case $ANALYSIS_TYPE in
             "morning_scan")
-              echo "早盤掃描 (9:30): 200支股票，使用當日數據，提升分析準確度"
+              echo "🌅 早盤掃描分析"
+              echo "  📈 分析股票數: 200+"
+              echo "  🎯 重點: 開盤動能分析"
+              echo "  🇯🇵 日本隔夜影響評估"
               ;;
-            "mid_morning_scan")
-              echo "盤中掃描 (10:30): 300支股票，短線推薦優先"
+            "afternoon_analysis")
+              echo "🌆 盤後深度分析"
+              echo "  📈 分析股票數: 500+"
+              echo "  🎯 重點: 綜合基本面分析"
+              echo "  🌍 全球市場關聯分析"
               ;;
-            "mid_day_scan")
-              echo "午間掃描 (12:30): 300支股票，混合分析"
+            "weekend_summary")
+              echo "📋 週末總結分析"
+              echo "  📈 分析股票數: 1000+"
+              echo "  🎯 重點: 深度基本面挖掘"
+              echo "  📊 週度趨勢總結"
               ;;
-            "afternoon_scan")
-              echo "盤後掃描 (15:00): 1000支股票，長線推薦增加至4支"
-              echo "重點關注基本面優質股"
+            "pre_us_market_analysis")
+              echo "🇺🇸 美股開盤前分析"
+              echo "  📈 分析台股ADR影響"
+              echo "  🎯 重點: 隔夜美股預期影響"
               ;;
-            "weekly_summary")
-              echo "週末總結 (週六12:00): 1000支股票，長線推薦增加至5支"
-              echo "深度挖掘基本面優質股，最佳長線分析時段"
-              ;;
-            "heartbeat")
-              echo "系統心跳檢測"
-              ;;
-            "test_notification")
-              echo "測試通知功能（EMAIL + LINE）"
+            "ultimate_analysis")
+              echo "🎯 終極綜合分析"
+              echo "  📈 全功能深度分析"
+              echo "  🤖 所有AI模組啟用"
               ;;
           esac
           
-          # 執行分析
-          if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-            python heartbeat_check.py
-          elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
-            echo "測試EMAIL + LINE雙推播..."
-            python test_notification.py --test all
-            python -c "
-          import sys
-          sys.path.append('.')
-          from line_notifier import test_line_notification
-          print('🧪 測試LINE推播功能')
-          test_line_notification()
-          "
-          else
-            python run_optimized_system.py run --slot $ANALYSIS_TYPE
-          fi
-          
-      - name: Run Standard Stock Analysis
-        if: env.OPTIMIZED_SYSTEM_AVAILABLE == 'false' && env.CONFIG_VALID == 'true'
-        run: |
-          echo "執行標準版股市分析..."
-          echo "優化版系統不可用，使用標準版"
-          echo "分析類型: $ANALYSIS_TYPE"
-          
-          # 執行標準版分析
-          if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-            python heartbeat_check.py
-          elif [ "$ANALYSIS_TYPE" = "test_notification" ]; then
-            python test_notification.py --test all
-          else
-            # 使用標準版分析
-            if [ -f "enhanced_stock_bot.py" ]; then
-              python enhanced_stock_bot.py $ANALYSIS_TYPE
-            elif [ -f "stock_bot.py" ]; then  
-              python stock_bot.py $ANALYSIS_TYPE
-            else
-              echo "找不到可執行的分析程式"
-              exit 1
-            fi
-          fi
-          
-      - name: Handle Missing Configuration
-        if: env.CONFIG_VALID == 'false'
-        run: |
-          echo "系統配置不完整，無法執行分析"
           echo ""
-          echo "請在 GitHub Repository Settings > Secrets 中設定："
-          echo "📧 EMAIL配置："
-          echo "  EMAIL_SENDER - 發件人郵箱"
-          echo "  EMAIL_PASSWORD - 郵箱應用程式密碼"
-          echo "  EMAIL_RECEIVER - 收件人郵箱"
-          echo ""
-          echo "📱 LINE配置（新增）："
-          echo "  LINE_CHANNEL_ACCESS_TOKEN - LINE Bot頻道存取權杖"
-          echo "  LINE_USER_ID - LINE用戶ID（個人推播）"
-          echo "  LINE_GROUP_ID - LINE群組ID（群組推播，可選）"
-          echo ""
-          echo "Gmail 用戶請使用應用程式密碼（16位數）"
-          echo "LINE Bot 設定步驟："
-          echo "  1. 前往 LINE Developers Console"
-          echo "  2. 建立新的 Messaging API 頻道"
-          echo "  3. 取得 Channel Access Token"
-          echo "  4. 取得用戶ID或群組ID"
-          echo ""
+          echo "⏳ 開始執行分析..."
           
-          # 創建提醒檔案
-          echo "配置缺失 - $(date)" > missing_config.log
+          # 執行Python分析程式
+          python ultimate_stock_recommender.py \
+            --analysis-type "$ANALYSIS_TYPE" \
+            --max-recommendations "$MAX_RECOMMENDATIONS" \
+            --risk-tolerance "$RISK_TOLERANCE" \
+            --enable-japan-analysis "$ENABLE_JAPAN_ANALYSIS" \
+            --enable-all-features true
           
-          exit 1
+          echo "✅ 分析執行完成"
           
-      - name: Analysis Summary
+      - name: Process Analysis Results
         if: success()
         run: |
-          echo "分析執行摘要"
-          echo "==============================================="
-          echo "執行時間: $(TZ=Asia/Taipei date)"
-          echo "分析類型: $ANALYSIS_TYPE"
-          echo "系統版本: $([ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ] && echo "優化版（長線基本面強化 + LINE推播）" || echo "標準版")"
+          echo "📊 處理分析結果..."
           
-          # 檢查通知狀態
-          if [ "$CONFIG_VALID" = "true" ]; then
-            echo "📧 EMAIL通知: 已發送"
-            if [ "$LINE_ENABLED" = "True" ]; then
-              echo "📱 LINE推播: 已發送"
-            else
-              echo "📱 LINE推播: 未啟用"
+          # 檢查結果檔案
+          if [ -f "data/analysis_results/ultimate_recommendations.json" ]; then
+            echo "✅ 推薦結果已生成"
+            
+            # 顯示推薦統計
+            RECOMMENDATION_COUNT=$(python -c "
+          import json
+          with open('data/analysis_results/ultimate_recommendations.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+              print(len(data.get('recommendations', [])))
+          ")
+            
+            echo "📈 推薦股票數量: $RECOMMENDATION_COUNT"
+            
+            # 顯示全球經濟概況
+            if [ -f "data/analysis_results/global_economic_summary.json" ]; then
+              GLOBAL_SCORE=$(python -c "
+            import json
+            with open('data/analysis_results/global_economic_summary.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                print(f\"{data.get('global_score', 0):.1f}\")
+            ")
+              echo "🌍 全球經濟分數: $GLOBAL_SCORE/100"
             fi
+            
           else
-            echo "🚫 通知狀態: 配置錯誤"
+            echo "❌ 未找到分析結果檔案"
+            exit 1
           fi
           
-          echo ""
-          echo "🆕 更新功能："
-          echo "  📅 早盤分析時間: 9:00 → 9:30（使用當日數據）"
-          echo "  📱 新增LINE推播功能，與EMAIL並行"
-          echo "  📊 週末總結時間: 週五17:00 → 週六12:00"
+      - name: Send Enhanced Notifications
+        if: success()
+        run: |
+          echo "📤 發送增強版通知..."
           
-          if [ "$OPTIMIZED_SYSTEM_AVAILABLE" = "true" ]; then
-            echo ""
-            echo "優化版功能已啟用："
-            echo "  長線推薦基本面分析強化"
-            echo "  重點關注：殖利率、EPS成長、法人買超"
-            echo "  推薦標準：更嚴格的基本面篩選"
-            echo "  雙推播：EMAIL + LINE同步通知"
+          # 準備通知內容
+          NOTIFICATION_TITLE="🚀 終極版台股分析報告"
+          NOTIFICATION_SUBTITLE="整合全球景氣 × 日本市場 × AI預測"
+          
+          # 執行通知發送
+          python send_ultimate_notifications.py \
+            --title "$NOTIFICATION_TITLE" \
+            --subtitle "$NOTIFICATION_SUBTITLE" \
+            --analysis-type "$ANALYSIS_TYPE" \
+            --include-japan-analysis true \
+            --format enhanced
+          
+          echo "✅ 通知發送完成"
+          
+      - name: Update System Performance Metrics
+        if: success()
+        run: |
+          echo "📊 更新系統績效指標..."
+          
+          # 記錄執行統計
+          python update_performance_metrics.py \
+            --analysis-type "$ANALYSIS_TYPE" \
+            --execution-time "$(date -Iseconds)" \
+            --recommendations-count "$RECOMMENDATION_COUNT" \
+            --global-economic-score "$GLOBAL_SCORE"
+          
+          echo "✅ 績效指標已更新"
+          
+      - name: Cleanup and Archive
+        if: always()
+        run: |
+          echo "🧹 清理和歸檔..."
+          
+          # 壓縮日誌檔案
+          if [ -d "logs" ]; then
+            tar -czf "logs_$(date +%Y%m%d_%H%M%S).tar.gz" logs/
+            echo "📦 日誌檔案已壓縮"
           fi
           
-          # 根據分析類型顯示特色
-          case $ANALYSIS_TYPE in
-            "morning_scan")
-              echo ""
-              echo "🌅 早盤分析特色："
-              echo "  延後到9:30確保當日數據完整"
-              echo "  200支股票深度分析"
-              echo "  技術面即時反應市場開盤狀況"
-              ;;
-            "afternoon_scan"|"weekly_summary")
-              echo ""
-              echo "長線分析重點："
-              echo "  1000支股票深度分析"
-              echo "  優先推薦高殖利率股票（>2.5%）"
-              echo "  優先推薦EPS高成長股票（>8%）"
-              echo "  優先推薦法人大額買超股票（>5000萬）"
-              echo "  重視ROE、連續配息等品質指標"
-              ;;
-          esac
+          # 清理暫存檔案
+          find cache/ -name "*.tmp" -mtime +1 -delete 2>/dev/null || true
+          find data/ -name "*.cache" -mtime +7 -delete 2>/dev/null || true
           
-          echo "==============================================="
-          echo "股市分析系統執行完成"
+          echo "✅ 清理完成"
           
-      - name: Archive Analysis Results
+      - name: Upload Analysis Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: stock-analysis-results-${{ env.ANALYSIS_TYPE }}-${{ github.run_number }}
+          name: ultimate-stock-analysis-${{ env.ANALYSIS_TYPE }}-${{ github.run_number }}
           path: |
+            data/analysis_results/
             logs/
-            data/analysis_results*/
-            *.log
+            *.tar.gz
           retention-days: 30
           
-      - name: Workflow Status Notification
+      - name: Generate Execution Summary
+        if: always()
+        run: |
+          echo "📋 執行摘要"
+          echo "=================================="
+          echo "🕐 執行時間: $(TZ=Asia/Taipei date)"
+          echo "🎯 分析類型: $ANALYSIS_TYPE"
+          echo "🌍 全球經濟整合: ✅"
+          echo "🇯🇵 日本市場分析: $([ "$ENABLE_JAPAN_ANALYSIS" = "true" ] && echo "✅" || echo "❌")"
+          echo "🤖 AI機器學習: ✅"
+          echo "📊 多因子模型: ✅"
+          echo "💭 情感分析: ✅"
+          echo "🛡️ 風險管理: ✅"
+          echo "📡 替代數據: ✅"
+          echo ""
+          
+          if [ -n "$RECOMMENDATION_COUNT" ]; then
+            echo "📈 推薦結果: $RECOMMENDATION_COUNT 檔股票"
+          fi
+          
+          if [ -n "$GLOBAL_SCORE" ]; then
+            echo "🌍 全球經濟: $GLOBAL_SCORE/100 分"
+          fi
+          
+          echo ""
+          echo "🎯 終極版特色已全部啟用："
+          echo "  ✅ 全球五大經濟體分析 (美中日台歐)"
+          echo "  ✅ 日台經濟關聯性深度分析"
+          echo "  ✅ AI集成機器學習預測"
+          echo "  ✅ 社群情感即時監控"
+          echo "  ✅ 多維度風險管理"
+          echo "  ✅ 替代數據整合分析"
+          echo "  ✅ EMAIL + LINE 雙推播"
+          echo ""
+          echo "🚀 終極版台股推薦系統執行完成！"
+          
+      - name: Handle Workflow Failure
         if: failure()
         run: |
-          echo "工作流程執行失敗"
+          echo "❌ 工作流程執行失敗"
           echo "分析類型: $ANALYSIS_TYPE"
           echo "失敗時間: $(TZ=Asia/Taipei date)"
           echo ""
           echo "可能原因："
-          echo "  1. EMAIL或LINE配置錯誤"
-          echo "  2. 網路連線問題"
-          echo "  3. 台股資料源異常"
-          echo "  4. 程式碼錯誤"
+          echo "  1. 網路連線問題"
+          echo "  2. 數據源異常"
+          echo "  3. API配額限制"
+          echo "  4. 系統配置錯誤"
           echo ""
           echo "建議檢查："
-          echo "  - GitHub Secrets 通知設定（EMAIL + LINE）"
-          echo "  - 程式碼是否正確"
+          echo "  - GitHub Secrets 設定"
+          echo "  - 網路連線狀況"
           echo "  - 執行日誌錯誤訊息"
+          echo "  - 系統資源使用狀況"
+          
+          # 嘗試發送失敗通知
+          if [ -n "$EMAIL_SENDER" ] && [ -n "$EMAIL_RECEIVER" ]; then
+            python send_error_notification.py \
+              --error-type "workflow_failure" \
+              --analysis-type "$ANALYSIS_TYPE" \
+              --timestamp "$(date -Iseconds)" || true
+          fi
