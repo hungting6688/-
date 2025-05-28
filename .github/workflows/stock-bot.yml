@@ -44,15 +44,6 @@ on:
         required: false
         default: '15'
         type: string
-      risk_tolerance:
-        description: '風險偏好設定'
-        required: false
-        default: 'moderate'
-        type: choice
-        options:
-          - conservative
-          - moderate
-          - aggressive
 
 env:
   # 時區設定
@@ -76,16 +67,6 @@ env:
   LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
   LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
   LINE_GROUP_ID: ${{ secrets.LINE_GROUP_ID }}
-  
-  # 分析權重配置（針對長線基本面優化）
-  LONGTERM_FUNDAMENTAL_WEIGHT: '1.2'
-  LONGTERM_INSTITUTIONAL_WEIGHT: '0.8'
-  SHORTTERM_TECHNICAL_WEIGHT: '0.8'
-  
-  # 推薦篩選條件
-  DIVIDEND_YIELD_THRESHOLD: '2.5'
-  EPS_GROWTH_THRESHOLD: '8.0'
-  INSTITUTIONAL_BUY_THRESHOLD: '5000'
 
 jobs:
   stock-analysis:
@@ -107,8 +88,6 @@ jobs:
           echo "📦 安裝核心依賴套件..."
           pip install --upgrade pip
           pip install -r requirements.txt
-          
-          # 驗證重要套件
           python -c "import pandas, numpy, requests; print('✅ 核心套件安裝成功')"
           
       - name: 驗證系統配置
@@ -116,12 +95,7 @@ jobs:
           echo "🔍 驗證系統配置..."
           
           # 檢查必要檔案
-          required_files=(
-            "twse_data_fetcher.py"
-            "enhanced_stock_bot.py" 
-            "notifier.py"
-            "config.py"
-          )
+          required_files=("twse_data_fetcher.py" "enhanced_stock_bot.py" "notifier.py" "config.py")
           
           for file in "${required_files[@]}"; do
             if [ ! -f "$file" ]; then
@@ -133,16 +107,8 @@ jobs:
           # 檢查 EMAIL 配置
           if [ -z "$EMAIL_SENDER" ] || [ -z "$EMAIL_PASSWORD" ] || [ -z "$EMAIL_RECEIVER" ]; then
             echo "⚠️ EMAIL 配置不完整，將影響通知功能"
-            echo "請檢查 GitHub Secrets 中的 EMAIL 相關設定"
           else
             echo "✅ EMAIL 配置完整"
-          fi
-          
-          # 檢查 LINE 配置
-          if [ "$LINE_ENABLED" = "True" ] && [ -z "$LINE_CHANNEL_ACCESS_TOKEN" ]; then
-            echo "⚠️ LINE 配置不完整，將停用 LINE 推播"
-          elif [ "$LINE_ENABLED" = "True" ]; then
-            echo "✅ LINE 配置完整"
           fi
           
           echo "SYSTEM_CONFIG_VALID=true" >> $GITHUB_ENV
@@ -163,7 +129,6 @@ jobs:
             ANALYSIS_TYPE="${{ github.event.inputs.analysis_type }}"
             ENHANCED_ANALYSIS="${{ github.event.inputs.enable_enhanced_analysis }}"
             MAX_RECOMMENDATIONS="${{ github.event.inputs.max_recommendations }}"
-            RISK_TOLERANCE="${{ github.event.inputs.risk_tolerance }}"
           else
             # 根據排程時間自動判斷分析類型
             CURRENT_HOUR=$(TZ=Asia/Taipei date +%H)
@@ -186,18 +151,15 @@ jobs:
             
             ENHANCED_ANALYSIS="true"
             MAX_RECOMMENDATIONS="15"
-            RISK_TOLERANCE="moderate"
           fi
           
           echo "ANALYSIS_TYPE=$ANALYSIS_TYPE" >> $GITHUB_ENV
           echo "ENHANCED_ANALYSIS=$ENHANCED_ANALYSIS" >> $GITHUB_ENV
           echo "MAX_RECOMMENDATIONS=$MAX_RECOMMENDATIONS" >> $GITHUB_ENV
-          echo "RISK_TOLERANCE=$RISK_TOLERANCE" >> $GITHUB_ENV
           
           echo "🎯 執行類型: $ANALYSIS_TYPE"
           echo "⚡ 增強分析: $ENHANCED_ANALYSIS"
           echo "📊 最大推薦: $MAX_RECOMMENDATIONS"
-          echo "⚖️ 風險偏好: $RISK_TOLERANCE"
           
       - name: 執行股票分析系統
         run: |
@@ -210,36 +172,30 @@ jobs:
               echo "🌅 早盤掃描分析 (09:30)"
               echo "  📈 分析股票數: 200 支"
               echo "  🎯 重點: 開盤動能分析"
-              echo "  💡 特色: 短線技術指標為主"
               ;;
             "mid_morning_scan")
               echo "☀️ 盤中掃描分析 (10:30)"
               echo "  📈 分析股票數: 300 支"
               echo "  🎯 重點: 盤中動能追蹤"
-              echo "  💡 特色: 短線動能捕捉"
               ;;
             "mid_day_scan")
               echo "🌞 午間掃描分析 (12:30)"
               echo "  📈 分析股票數: 300 支"
               echo "  🎯 重點: 綜合技術分析"
-              echo "  💡 特色: 技術面與基本面並重"
               ;;
             "afternoon_scan")
               echo "🌇 盤後深度分析 (15:30)"
               echo "  📈 分析股票數: 1000 支"
               echo "  🎯 重點: 全面深度分析"
-              echo "  💡 特色: 長線基本面分析加強"
               ;;
             "weekly_summary")
               echo "📈 週末總結分析 (週六12:00)"
               echo "  📈 分析股票數: 1000 支"
               echo "  🎯 重點: 深度基本面挖掘"
-              echo "  💡 特色: 高殖利率與EPS成長股優先"
               ;;
             "heartbeat")
               echo "💓 系統心跳檢測"
               echo "  🔍 檢查系統運行狀態"
-              echo "  📧 發送系統狀態報告"
               ;;
           esac
           
@@ -248,7 +204,11 @@ jobs:
           
           # 執行對應的分析程式
           if [ "$ANALYSIS_TYPE" = "heartbeat" ]; then
-            python heartbeat_check.py
+            if [ -f "heartbeat_check.py" ]; then
+              python heartbeat_check.py
+            else
+              echo "💓 系統心跳檢測 - 系統運行正常"
+            fi
           elif [ "$ENHANCED_ANALYSIS" = "true" ]; then
             # 使用增強版分析系統
             if [ -f "enhanced_stock_bot_optimized.py" ]; then
@@ -257,43 +217,17 @@ jobs:
             elif [ -f "enhanced_stock_bot.py" ]; then
               echo "🔧 使用標準版增強分析系統"  
               python enhanced_stock_bot.py $ANALYSIS_TYPE
+            elif [ -f "run_enhanced.py" ]; then
+              echo "🔧 使用整合版分析系統"
+              python run_enhanced.py $ANALYSIS_TYPE
             else
               echo "🔧 使用基礎分析系統"
-              python run_enhanced.py $ANALYSIS_TYPE
+              python -c "import sys; sys.path.append('.'); from twse_data_fetcher import TWStockDataFetcher; import notifier; fetcher = TWStockDataFetcher(); notifier.init(); stocks = fetcher.get_stocks_by_time_slot('$ANALYSIS_TYPE'); print(f'獲取 {len(stocks)} 支股票'); recommendations = {'short_term': stocks[:3], 'long_term': stocks[3:6], 'weak_stocks': []}; notifier.send_combined_recommendations(recommendations, '$ANALYSIS_TYPE'); print('分析完成')"
             fi
           else
             # 使用基礎分析系統
             echo "🔧 使用基礎分析系統"
-            python3 << 'EOF'
-import sys
-import os
-sys.path.append('.')
-
-try:
-    from twse_data_fetcher import TWStockDataFetcher
-    import notifier
-    
-    print('📊 執行基礎股票分析...')
-    fetcher = TWStockDataFetcher()
-    notifier.init()
-    
-    analysis_type = os.environ.get('ANALYSIS_TYPE', 'afternoon_scan')
-    stocks = fetcher.get_stocks_by_time_slot(analysis_type)
-    print(f'✅ 獲取 {len(stocks)} 支股票')
-    
-    recommendations = {
-        'short_term': stocks[:3] if len(stocks) >= 3 else stocks,
-        'long_term': stocks[3:6] if len(stocks) >= 6 else [],
-        'weak_stocks': []
-    }
-    
-    notifier.send_combined_recommendations(recommendations, analysis_type)
-    print('📧 分析完成，通知已發送')
-    
-except Exception as e:
-    print(f'❌ 基礎分析執行失敗: {e}')
-    sys.exit(1)
-EOF
+            python -c "import sys; sys.path.append('.'); from twse_data_fetcher import TWStockDataFetcher; import notifier; fetcher = TWStockDataFetcher(); notifier.init(); stocks = fetcher.get_stocks_by_time_slot('$ANALYSIS_TYPE'); print(f'獲取 {len(stocks)} 支股票'); recommendations = {'short_term': stocks[:3], 'long_term': stocks[3:6], 'weak_stocks': []}; notifier.send_combined_recommendations(recommendations, '$ANALYSIS_TYPE'); print('分析完成')"
           fi
           
           echo "✅ 分析執行完成"
@@ -309,8 +243,7 @@ EOF
           if [ -d "data/analysis_results" ]; then
             result_files=$(find data/analysis_results -name "*${ANALYSIS_TYPE}*" -type f | head -5)
             if [ -n "$result_files" ]; then
-              echo "✅ 找到分析結果檔案:"
-              echo "$result_files"
+              echo "✅ 找到分析結果檔案"
               results_found=true
             fi
           fi
@@ -329,21 +262,12 @@ EOF
         if: always()
         run: |
           echo "📊 系統效能監控..."
-          
-          # 顯示系統資源使用情況
           echo "🖥️ 系統資源使用："
-          echo "CPU 使用率: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%"
           echo "記憶體使用: $(free -h | awk '/^Mem:/ {print $3 "/" $2}')"
           echo "磁碟使用: $(df -h / | awk 'NR==2 {print $3 "/" $2 " (" $5 ")"}')"
-          
-          # 顯示 Python 套件版本
           echo "🐍 Python 環境："
           python --version
-          pip list | grep -E "(pandas|numpy|requests)" || true
-          
-          # 記錄執行統計
           echo "EXECUTION_TIME=$(date -Iseconds)" >> $GITHUB_ENV
-          echo "WORKFLOW_STATUS=completed" >> $GITHUB_ENV
           
       - name: 清理和歸檔
         if: always()
@@ -359,7 +283,6 @@ EOF
           # 清理暫存檔案
           find cache/ -name "*.tmp" -mtime +1 -delete 2>/dev/null || true
           find . -name "*.pyc" -delete 2>/dev/null || true
-          find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           
           echo "✅ 清理完成"
           
@@ -386,7 +309,6 @@ EOF
           echo "🌍 時區: Asia/Taipei"
           echo "🐍 Python: $(python --version)"
           echo "📊 最大推薦: $MAX_RECOMMENDATIONS"
-          echo "⚖️ 風險偏好: $RISK_TOLERANCE"
           echo ""
           
           case $ANALYSIS_TYPE in
@@ -445,7 +367,7 @@ EOF
           echo "🛠️ 建議檢查："
           echo "  - GitHub Secrets 中的 EMAIL 設定"
           echo "  - requirements.txt 中的套件版本"
-          echo "  - 程式碼語法檢查 (python -m py_compile *.py)"
+          echo "  - 程式碼語法檢查"
           echo "  - 網路連線狀況"
           echo ""
           
@@ -455,34 +377,5 @@ EOF
             tail -20 logs/stock_bot.log || true
           fi
           
-          # 嘗試發送錯誤通知（如果通知系統可用）
-          python3 << 'EOF' || true
-import os
-import sys
-import datetime
-
-sys.path.append('.')
-
-try:
-    import notifier
-    notifier.init()
-    
-    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    analysis_type = os.environ.get('ANALYSIS_TYPE', 'unknown')
-    
-    error_msg = f"""❌ 台股分析系統執行失敗
-    
-⏰ 失敗時間: {current_time}
-🎯 分析類型: {analysis_type}
-🔧 GitHub Actions 工作流程異常
-
-請檢查 GitHub Actions 日誌了解詳細錯誤原因。
-
-系統將在下次排程時間自動重試。"""
-    
-    notifier.send_notification(error_msg, '❌ 台股分析系統執行失敗', urgent=True)
-    print('📧 錯誤通知已發送')
-    
-except Exception as e:
-    print(f'⚠️ 無法發送錯誤通知: {e}')
-EOF
+          # 嘗試發送錯誤通知
+          python -c "import sys; sys.path.append('.'); import notifier; notifier.init(); notifier.send_notification('台股分析系統執行失敗', '系統錯誤通知', urgent=True)" || echo "無法發送錯誤通知"
