@@ -264,28 +264,36 @@ jobs:
           else
             # 使用基礎分析系統
             echo "🔧 使用基礎分析系統"
-            python -c "
+            python3 << 'EOF'
 import sys
+import os
 sys.path.append('.')
-from twse_data_fetcher import TWStockDataFetcher
-import notifier
 
-print('📊 執行基礎股票分析...')
-fetcher = TWStockDataFetcher()
-notifier.init()
-
-stocks = fetcher.get_stocks_by_time_slot('${ANALYSIS_TYPE}')
-print(f'✅ 獲取 {len(stocks)} 支股票')
-
-recommendations = {
-    'short_term': stocks[:3] if len(stocks) >= 3 else stocks,
-    'long_term': stocks[3:6] if len(stocks) >= 6 else [],
-    'weak_stocks': []
-}
-
-notifier.send_combined_recommendations(recommendations, '${ANALYSIS_TYPE}')
-print('📧 分析完成，通知已發送')
-"
+try:
+    from twse_data_fetcher import TWStockDataFetcher
+    import notifier
+    
+    print('📊 執行基礎股票分析...')
+    fetcher = TWStockDataFetcher()
+    notifier.init()
+    
+    analysis_type = os.environ.get('ANALYSIS_TYPE', 'afternoon_scan')
+    stocks = fetcher.get_stocks_by_time_slot(analysis_type)
+    print(f'✅ 獲取 {len(stocks)} 支股票')
+    
+    recommendations = {
+        'short_term': stocks[:3] if len(stocks) >= 3 else stocks,
+        'long_term': stocks[3:6] if len(stocks) >= 6 else [],
+        'weak_stocks': []
+    }
+    
+    notifier.send_combined_recommendations(recommendations, analysis_type)
+    print('📧 分析完成，通知已發送')
+    
+except Exception as e:
+    print(f'❌ 基礎分析執行失敗: {e}')
+    sys.exit(1)
+EOF
           fi
           
           echo "✅ 分析執行完成"
@@ -448,24 +456,33 @@ print('📧 分析完成，通知已發送')
           fi
           
           # 嘗試發送錯誤通知（如果通知系統可用）
-          python -c "
-import os, sys
+          python3 << 'EOF' || true
+import os
+import sys
+import datetime
+
 sys.path.append('.')
+
 try:
     import notifier
     notifier.init()
-    error_msg = '''❌ 台股分析系統執行失敗
     
-⏰ 失敗時間: $(TZ=Asia/Taipei date)
-🎯 分析類型: $ANALYSIS_TYPE
+    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    analysis_type = os.environ.get('ANALYSIS_TYPE', 'unknown')
+    
+    error_msg = f"""❌ 台股分析系統執行失敗
+    
+⏰ 失敗時間: {current_time}
+🎯 分析類型: {analysis_type}
 🔧 GitHub Actions 工作流程異常
 
 請檢查 GitHub Actions 日誌了解詳細錯誤原因。
 
-系統將在下次排程時間自動重試。'''
+系統將在下次排程時間自動重試。"""
     
     notifier.send_notification(error_msg, '❌ 台股分析系統執行失敗', urgent=True)
     print('📧 錯誤通知已發送')
+    
 except Exception as e:
     print(f'⚠️ 無法發送錯誤通知: {e}')
-" || true
+EOF
