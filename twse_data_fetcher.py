@@ -1,72 +1,6 @@
-#!/usr/bin/env python3
 """
-fix_twstockdatafetcher_import.py - 修復 TWStockDataFetcher 導入問題
-重新創建一個簡化但完整的 twse_data_fetcher.py
-"""
-
-import os
-import sys
-
-def diagnose_file():
-    """診斷當前文件問題"""
-    print("🔍 診斷 twse_data_fetcher.py 文件...")
-    
-    if not os.path.exists('twse_data_fetcher.py'):
-        print("❌ 文件不存在")
-        return False
-    
-    try:
-        with open('twse_data_fetcher.py', 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        print(f"📄 文件大小: {len(content)} 字符")
-        print(f"📄 行數: {len(content.splitlines())}")
-        
-        # 檢查是否包含類定義
-        if 'class TWStockDataFetcher' in content:
-            print("✅ 找到 TWStockDataFetcher 類定義")
-        else:
-            print("❌ 沒有找到 TWStockDataFetcher 類定義")
-            return False
-        
-        # 檢查語法
-        try:
-            compile(content, 'twse_data_fetcher.py', 'exec')
-            print("✅ 語法檢查通過")
-        except SyntaxError as e:
-            print(f"❌ 語法錯誤: 第{e.lineno}行: {e.text}")
-            print(f"   錯誤: {e.msg}")
-            return False
-        
-        # 嘗試導入測試
-        try:
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("twse_data_fetcher", "twse_data_fetcher.py")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            
-            if hasattr(module, 'TWStockDataFetcher'):
-                print("✅ TWStockDataFetcher 類可以成功導入")
-                return True
-            else:
-                print("❌ 模組中沒有 TWStockDataFetcher 類")
-                return False
-                
-        except Exception as e:
-            print(f"❌ 導入測試失敗: {e}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ 文件讀取失敗: {e}")
-        return False
-
-def create_minimal_fetcher():
-    """創建最小化但可用的 TWStockDataFetcher"""
-    print("🔧 創建最小化的 TWStockDataFetcher...")
-    
-    minimal_code = '''"""
-twse_data_fetcher.py - 台股數據抓取器（簡化版）
-修復導入問題的最小化版本
+twse_data_fetcher.py - 台股數據抓取器（修復版）
+修復導入問題的完整版本
 """
 import os
 import json
@@ -105,7 +39,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 class TWStockDataFetcher:
-    """台股數據抓取器（簡化版）"""
+    """台股數據抓取器（修復版）"""
     
     def __init__(self, cache_dir: str = 'cache'):
         """初始化數據獲取器"""
@@ -421,88 +355,3 @@ def test_fetcher():
 
 if __name__ == "__main__":
     test_fetcher()
-'''
-    
-    return minimal_code
-
-def fix_import_issue():
-    """修復導入問題"""
-    print("🚀 開始修復 TWStockDataFetcher 導入問題...")
-    
-    # 步驟1: 診斷問題
-    if diagnose_file():
-        print("✅ 文件看起來正常，可能是其他問題")
-        return True
-    
-    # 步驟2: 備份現有文件
-    if os.path.exists('twse_data_fetcher.py'):
-        backup_name = f'twse_data_fetcher_backup_{int(time.time())}.py'
-        os.rename('twse_data_fetcher.py', backup_name)
-        print(f"📁 已備份原文件為: {backup_name}")
-    
-    # 步驟3: 創建新的最小化版本
-    minimal_code = create_minimal_fetcher()
-    
-    with open('twse_data_fetcher.py', 'w', encoding='utf-8') as f:
-        f.write(minimal_code)
-    
-    print("✅ 已創建新的 twse_data_fetcher.py")
-    
-    # 步驟4: 測試新文件
-    print("🧪 測試新文件...")
-    
-    try:
-        # 語法檢查
-        with open('twse_data_fetcher.py', 'r', encoding='utf-8') as f:
-            content = f.read()
-        compile(content, 'twse_data_fetcher.py', 'exec')
-        print("✅ 語法檢查通過")
-        
-        # 導入測試
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("twse_data_fetcher", "twse_data_fetcher.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        
-        if hasattr(module, 'TWStockDataFetcher'):
-            print("✅ TWStockDataFetcher 類可以成功導入")
-            
-            # 功能測試
-            fetcher = module.TWStockDataFetcher()
-            print("✅ TWStockDataFetcher 可以成功實例化")
-            
-            return True
-        else:
-            print("❌ 模組中沒有 TWStockDataFetcher 類")
-            return False
-            
-    except Exception as e:
-        print(f"❌ 測試失敗: {e}")
-        return False
-
-def main():
-    """主函數"""
-    print("🔧 TWStockDataFetcher 導入問題修復工具")
-    print("=" * 50)
-    
-    if fix_import_issue():
-        print("\n🎉 修復成功！")
-        print("📋 修復內容:")
-        print("  ✅ 重新創建了簡化但完整的 twse_data_fetcher.py")
-        print("  ✅ 修復了 aiohttp 可選導入問題")
-        print("  ✅ 保持了所有必要的功能")
-        print("  ✅ TWStockDataFetcher 類可以正常導入")
-        
-        print("\n🚀 現在可以運行您的股票分析系統:")
-        print("  python enhanced_stock_bot.py afternoon_scan")
-        
-        return True
-    else:
-        print("\n❌ 修復失敗")
-        print("請檢查錯誤信息或聯繫技術支援")
-        return False
-
-if __name__ == "__main__":
-    import time
-    success = main()
-    sys.exit(0 if success else 1)
