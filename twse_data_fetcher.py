@@ -14,7 +14,18 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio
-import aiohttp
+# 可選的 aiohttp 支援
+try:
+    import aiohttp
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
+    # 創建模擬的 aiohttp 類避免錯誤
+    class aiohttp:
+        class ClientSession:
+            def __init__(self, *args, **kwargs): pass
+        class ClientTimeout:
+            def __init__(self, *args, **kwargs): pass
 from dataclasses import dataclass
 from collections import deque
 import random
