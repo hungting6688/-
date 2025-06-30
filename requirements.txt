@@ -1,5 +1,5 @@
 # 台股分析機器人核心依賴套件
-# 修正版本 - 移除problematic packages
+# 修復版本 - 添加 aiohttp 並指定穩定版本
 
 # 核心數據處理套件
 pandas>=1.5.3
@@ -8,6 +8,10 @@ numpy>=1.24.2
 # HTTP 請求套件
 requests>=2.28.2
 urllib3>=1.26.0
+
+# 異步 HTTP 套件 (修復版本)
+aiohttp>=3.8.0,<3.11.0  # 使用穩定版本範圍
+async-timeout>=4.0.0
 
 # 排程任務套件
 schedule>=1.1.0
@@ -45,12 +49,16 @@ psutil>=5.9.0
 pytest>=7.3.0
 pytest-mock>=3.10.0
 
-# 注意：以下套件被移除因為它們會導致安裝問題：
-# - sqlite3 (Python內建模組)
-# - asyncio (Python內建模組)
-# - pathlib2 (Python 3.4+內建pathlib)
-# - colorlog (非必須)
-# - jsonschema (非必須)
-# - aiohttp (非必須，且有版本衝突)
-# - 所有機器學習相關套件 (非核心功能)
-# - 所有雲端服務套件 (非核心功能)
+# aiohttp 依賴項 (明確指定以避免版本衝突)
+multidict>=4.5,<7.0
+yarl>=1.0,<2.0
+frozenlist>=1.1.1
+attrs>=17.3.0
+charset-normalizer>=2.0,<4.0
+
+# 如果 aiohttp 安裝失敗的替代方案註釋
+# 可以使用以下命令手動安裝：
+# pip install --upgrade pip
+# pip install --no-cache-dir aiohttp==3.8.6
+# 或者使用預編譯的輪子：
+# pip install --only-binary=all aiohttp
