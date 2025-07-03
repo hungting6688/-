@@ -82,8 +82,12 @@ jobs:
     
     - name: 🔍 系統檢查
       id: check
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_TIME_SLOT: ${{ github.event.inputs.time_slot }}
+        INPUT_ANALYSIS_MODE: ${{ github.event.inputs.analysis_mode }}
       run: |
-        python << 'EOF'
+        python -c "
         import os
         from datetime import datetime
         import pytz
@@ -95,45 +99,46 @@ jobs:
         weekday = now.weekday()  # 0=Monday, 6=Sunday
         
         # 判斷時段和模式
-        if "${{ github.event_name }}" == "workflow_dispatch":
-            time_slot = "${{ github.event.inputs.time_slot }}"
-            analysis_mode = "${{ github.event.inputs.analysis_mode }}"
-            should_run = "true"
+        event_name = os.getenv('EVENT_NAME', '')
+        if event_name == 'workflow_dispatch':
+            time_slot = os.getenv('INPUT_TIME_SLOT', 'afternoon_scan')
+            analysis_mode = os.getenv('INPUT_ANALYSIS_MODE', 'optimized')
+            should_run = 'true'
         else:
             # 根據當前時間自動判斷
             if hour == 8 and 30 <= now.minute < 45:
-                time_slot = "heartbeat"
-                analysis_mode = "basic"
+                time_slot = 'heartbeat'
+                analysis_mode = 'basic'
             elif hour == 9 and 30 <= now.minute < 45:
-                time_slot = "morning_scan"
-                analysis_mode = "optimized"
+                time_slot = 'morning_scan'
+                analysis_mode = 'optimized'
             elif hour == 10 and 30 <= now.minute < 45:
-                time_slot = "mid_morning_scan"
-                analysis_mode = "enhanced"
+                time_slot = 'mid_morning_scan'
+                analysis_mode = 'enhanced'
             elif hour == 12 and 30 <= now.minute < 45:
-                time_slot = "mid_day_scan"
-                analysis_mode = "optimized"
+                time_slot = 'mid_day_scan'
+                analysis_mode = 'optimized'
             elif hour == 15 and 0 <= now.minute < 15:
-                time_slot = "afternoon_scan"
-                analysis_mode = "optimized"
+                time_slot = 'afternoon_scan'
+                analysis_mode = 'optimized'
             elif weekday == 5 and hour == 12 and 0 <= now.minute < 15:  # 週六
-                time_slot = "weekly_summary"
-                analysis_mode = "optimized"
+                time_slot = 'weekly_summary'
+                analysis_mode = 'optimized'
             else:
-                time_slot = "skip"
-                analysis_mode = "basic"
+                time_slot = 'skip'
+                analysis_mode = 'basic'
             
-            should_run = "true" if time_slot != "skip" else "false"
+            should_run = 'true' if time_slot != 'skip' else 'false'
         
-        print(f"::set-output name=should_run::{should_run}")
-        print(f"::set-output name=analysis_mode::{analysis_mode}")
-        print(f"::set-output name=time_slot::{time_slot}")
+        print(f'::set-output name=should_run::{should_run}')
+        print(f'::set-output name=analysis_mode::{analysis_mode}')
+        print(f'::set-output name=time_slot::{time_slot}')
         
-        print(f"🕐 台灣時間: {now.strftime('%Y-%m-%d %H:%M:%S %A')}")
-        print(f"📊 分析模式: {analysis_mode}")
-        print(f"⏰ 時段: {time_slot}")
-        print(f"🚀 是否執行: {should_run}")
-        EOF
+        print(f'🕐 台灣時間: {now.strftime(\"%Y-%m-%d %H:%M:%S %A\")}')
+        print(f'📊 分析模式: {analysis_mode}')
+        print(f'⏰ 時段: {time_slot}')
+        print(f'🚀 是否執行: {should_run}')
+        "
 
   # 心跳檢測任務
   heartbeat:
@@ -293,8 +298,8 @@ jobs:
 錯誤: 分析程序執行超時或異常
 
 請檢查系統狀態，可能需要手動介入。'''
-notifier.send_notification(error_msg, '❌ 系統執行失敗通知')
-except Exception as e:
+              notifier.send_notification(error_msg, '❌ 系統執行失敗通知')
+          except Exception as e:
               print(f'通知發送失敗: {e}')
           "
         }
