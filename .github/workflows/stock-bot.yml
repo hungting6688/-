@@ -376,10 +376,9 @@ jobs:
         REPO_NAME: ${{ github.repository }}
         RUN_ID: ${{ github.run_id }}
       run: |
-        python << 'EOF'
+        python -c "
         import os
         from datetime import datetime
-        import json
         
         # 從環境變數獲取狀態
         heartbeat_status = os.getenv('HEARTBEAT_STATUS', 'skipped')
@@ -391,12 +390,12 @@ jobs:
         run_id = os.getenv('RUN_ID', 'unknown')
         
         # 生成報告
-        trigger_method = "手動執行" if event_name == "workflow_dispatch" else "定時執行"
-        system_status = "✅ 系統運行正常" if analysis_status == "success" else "⚠️ 系統執行異常，請檢查日誌"
+        trigger_method = '手動執行' if event_name == 'workflow_dispatch' else '定時執行'
+        system_status = '✅ 系統運行正常' if analysis_status == 'success' else '⚠️ 系統執行異常，請檢查日誌'
         
-        report = f"""🤖 台股分析系統執行報告
+        report = f'''🤖 台股分析系統執行報告
         
-⏰ 執行時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+⏰ 執行時間: {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}
 🔧 分析模式: {analysis_mode}
 📊 分析時段: {time_slot}
 🚀 觸發方式: {trigger_method}
@@ -408,13 +407,13 @@ jobs:
 🔗 詳細日誌: https://github.com/{repo_name}/actions/runs/{run_id}
 
 {system_status}
-        """
+        '''
         
-        print("📋 執行狀態報告:")
+        print('📋 執行狀態報告:')
         print(report)
         
         # 如果有嚴重錯誤，嘗試發送緊急通知
-        if analysis_status == "failure":
+        if analysis_status == 'failure':
             try:
                 import smtplib
                 from email.mime.text import MIMEText
@@ -425,7 +424,7 @@ jobs:
                 
                 if email_sender and email_password and email_receiver:
                     msg = MIMEText(report)
-                    msg['Subject'] = "🚨 台股分析系統執行失敗"
+                    msg['Subject'] = '🚨 台股分析系統執行失敗'
                     msg['From'] = email_sender
                     msg['To'] = email_receiver
                     
@@ -434,12 +433,12 @@ jobs:
                     server.login(email_sender, email_password)
                     server.send_message(msg)
                     server.quit()
-                    print("📧 緊急通知已發送")
+                    print('📧 緊急通知已發送')
                 else:
-                    print("⚠️ 郵件配置不完整，無法發送緊急通知")
+                    print('⚠️ 郵件配置不完整，無法發送緊急通知')
             except Exception as e:
-                print(f"📧 緊急通知發送失敗: {e}")
-        EOF
+                print(f'📧 緊急通知發送失敗: {e}')
+        "
 
   # 可選: 錯誤處理和重試
   retry_on_failure:
