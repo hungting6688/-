@@ -293,8 +293,8 @@ jobs:
 錯誤: 分析程序執行超時或異常
 
 請檢查系統狀態，可能需要手動介入。'''
-              notifier.send_notification(error_msg, '❌ 系統執行失敗通知')
-          except Exception as e:
+notifier.send_notification(error_msg, '❌ 系統執行失敗通知')
+except Exception as e:
               print(f'通知發送失敗: {e}')
           "
         }
