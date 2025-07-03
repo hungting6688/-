@@ -368,32 +368,46 @@ jobs:
         LINE_ENABLED: ${{ secrets.LINE_ENABLED }}
         LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
         LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        HEARTBEAT_STATUS: ${{ needs.heartbeat.result }}
+        ANALYSIS_STATUS: ${{ needs.stock_analysis.result }}
+        ANALYSIS_MODE: ${{ needs.system_check.outputs.analysis_mode }}
+        TIME_SLOT: ${{ needs.system_check.outputs.time_slot }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPO_NAME: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
       run: |
         python << 'EOF'
         import os
         from datetime import datetime
         import json
         
-        # 收集執行狀態
-        heartbeat_status = "${{ needs.heartbeat.result }}" if "${{ needs.heartbeat.result }}" else "skipped"
-        analysis_status = "${{ needs.stock_analysis.result }}" if "${{ needs.stock_analysis.result }}" else "skipped"
+        # 從環境變數獲取狀態
+        heartbeat_status = os.getenv('HEARTBEAT_STATUS', 'skipped')
+        analysis_status = os.getenv('ANALYSIS_STATUS', 'skipped')
+        analysis_mode = os.getenv('ANALYSIS_MODE', 'unknown')
+        time_slot = os.getenv('TIME_SLOT', 'unknown')
+        event_name = os.getenv('EVENT_NAME', 'unknown')
+        repo_name = os.getenv('REPO_NAME', 'unknown')
+        run_id = os.getenv('RUN_ID', 'unknown')
         
         # 生成報告
-        report = f"""
-🤖 台股分析系統執行報告
+        trigger_method = "手動執行" if event_name == "workflow_dispatch" else "定時執行"
+        system_status = "✅ 系統運行正常" if analysis_status == "success" else "⚠️ 系統執行異常，請檢查日誌"
+        
+        report = f"""🤖 台股分析系統執行報告
         
 ⏰ 執行時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-🔧 分析模式: ${{ needs.system_check.outputs.analysis_mode }}
-📊 分析時段: ${{ needs.system_check.outputs.time_slot }}
-🚀 觸發方式: {"手動執行" if "${{ github.event_name }}" == "workflow_dispatch" else "定時執行"}
+🔧 分析模式: {analysis_mode}
+📊 分析時段: {time_slot}
+🚀 觸發方式: {trigger_method}
 
 📈 執行結果:
 💓 心跳檢測: {heartbeat_status}
 📊 股票分析: {analysis_status}
 
-🔗 詳細日誌: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+🔗 詳細日誌: https://github.com/{repo_name}/actions/runs/{run_id}
 
-{"✅ 系統運行正常" if analysis_status == "success" else "⚠️ 系統執行異常，請檢查日誌"}
+{system_status}
         """
         
         print("📋 執行狀態報告:")
@@ -405,23 +419,29 @@ jobs:
                 import smtplib
                 from email.mime.text import MIMEText
                 
-                if os.getenv('EMAIL_SENDER') and os.getenv('EMAIL_PASSWORD'):
+                email_sender = os.getenv('EMAIL_SENDER')
+                email_password = os.getenv('EMAIL_PASSWORD')
+                email_receiver = os.getenv('EMAIL_RECEIVER')
+                
+                if email_sender and email_password and email_receiver:
                     msg = MIMEText(report)
                     msg['Subject'] = "🚨 台股分析系統執行失敗"
-                    msg['From'] = os.getenv('EMAIL_SENDER')
-                    msg['To'] = os.getenv('EMAIL_RECEIVER')
+                    msg['From'] = email_sender
+                    msg['To'] = email_receiver
                     
                     server = smtplib.SMTP('smtp.gmail.com', 587)
                     server.starttls()
-                    server.login(os.getenv('EMAIL_SENDER'), os.getenv('EMAIL_PASSWORD'))
+                    server.login(email_sender, email_password)
                     server.send_message(msg)
                     server.quit()
                     print("📧 緊急通知已發送")
+                else:
+                    print("⚠️ 郵件配置不完整，無法發送緊急通知")
             except Exception as e:
                 print(f"📧 緊急通知發送失敗: {e}")
         EOF
 
-# 可選: 錯誤處理和重試
+  # 可選: 錯誤處理和重試
   retry_on_failure:
     name: 🔄 失敗重試機制
     runs-on: ubuntu-latest
@@ -439,7 +459,7 @@ jobs:
           github.rest.actions.createWorkflowDispatch({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            workflow_id: 'taiwan_stock_auto_push.yml',
+            workflow_id: 'stock-bot.yml',
             ref: 'main',
             inputs: {
               analysis_mode: 'optimized',
