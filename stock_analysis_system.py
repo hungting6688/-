@@ -660,8 +660,12 @@ class StockAnalysisSystem:
         date_str = now.strftime('%Y/%m/%d')
         time_str = now.strftime('%H:%M')
         
+        # 計算推薦統計
+        total_recommendations = len(recommendations['short_term']) + len(recommendations['long_term'])
+        
         message = f"📊 {date_str} 台股分析推播報告\n"
         message += f"⏰ 分析時間: {time_str}\n"
+        message += f"🎯 推薦標的: {total_recommendations} 支 | 風險警示: {len(recommendations['weak_stocks'])} 支\n"
         message += "=" * 50 + "\n\n"
         
         # 短線推薦
@@ -695,11 +699,24 @@ class StockAnalysisSystem:
                 message += f"   風險因素: {stock.reason}\n"
                 message += f"   建議: 謹慎操作，嚴設停損\n\n"
         
+        # 如果沒有任何推薦，顯示市場觀察
+        if not recommendations['short_term'] and not recommendations['long_term'] and not recommendations['weak_stocks']:
+            message += "📈 今日市場觀察\n\n"
+            message += "目前暫無符合條件的推薦標的。\n"
+            message += "建議保持觀望，等待更好的進場時機。\n\n"
+        
         message += "=" * 50 + "\n"
         message += "💡 投資提醒:\n"
         message += "⚠️ 本報告僅供參考，不構成投資建議\n"
         message += "⚠️ 股市有風險，投資需謹慎\n"
         message += "⚠️ 請設定停損點，控制投資風險\n\n"
+        
+        # 添加分析摘要
+        if total_recommendations > 0:
+            avg_confidence = sum(stock.confidence for category in ['short_term', 'long_term'] 
+                               for stock in recommendations[category]) / total_recommendations
+            message += f"📊 本次分析信心度: {avg_confidence:.0f}%\n"
+        
         message += "祝您投資順利！ 💰"
         
         return message
