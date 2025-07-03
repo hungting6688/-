@@ -290,7 +290,7 @@ jobs:
           try:
               import notifier
               notifier.init()
-              error_msg = '❌ 台股分析系統執行失敗\n\n時間: $(date \"+%Y-%m-%d %H:%M:%S\")\n模式: ${{ matrix.mode }}\n時段: ${{ matrix.slot }}\n錯誤: 分析程序執行超時或異常\n\n請檢查系統狀態，可能需要手動介入。'
+              error_msg = '❌ 台股分析系統執行失敗\\n\\n時間: $(date \"+%Y-%m-%d %H:%M:%S\")\\n模式: ${{ matrix.mode }}\\n時段: ${{ matrix.slot }}\\n錯誤: 分析程序執行超時或異常\\n\\n請檢查系統狀態，可能需要手動介入。'
               notifier.send_notification(error_msg, '❌ 系統執行失敗通知')
           except Exception as e:
               print(f'通知發送失敗: {e}')
@@ -447,7 +447,7 @@ jobs:
     
     steps:
     - name: ⏰ 等待重試
-      run: sleep 300  # 等待5分鐘
+      run: sleep 300
     
     - name: 🔄 觸發重試
       uses: actions/github-script@v7
