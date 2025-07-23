@@ -256,39 +256,104 @@ except ImportError:
 # ============================================================================
 
 class DataFetcher:
-    """數據獲取器 - 模擬台股數據獲取"""
+    """統一數據獲取器 - 優先使用真實數據，回退到模擬數據"""
     
     def __init__(self):
         self.cache = {}
         self.cache_expire_minutes = 30
+        self.use_real_data = True
+        self.real_fetcher = None
+        
+        # 初始化真實數據獲取器
+        self._init_real_fetcher()
+    
+    def _init_real_fetcher(self):
+        """初始化真實數據獲取器"""
+        try:
+            from real_twse_data_fetcher import RealTWSEDataFetcher
+            self.real_fetcher = RealTWSEDataFetcher()
+            
+            # 測試連接
+            test_results = self.real_fetcher.test_data_connection()
+            if any(test_results.values()):
+                log_event("✅ 真實數據源連接成功", level='success')
+                self.use_real_data = True
+            else:
+                log_event("⚠️ 真實數據源連接失敗，將使用模擬數據", level='warning')
+                self.use_real_data = False
+                
+        except ImportError:
+            log_event("⚠️ 真實數據獲取器不可用，使用模擬數據", level='warning')
+            self.use_real_data = False
+        except Exception as e:
+            log_event(f"⚠️ 真實數據獲取器初始化失敗: {e}，使用模擬數據", level='warning')
+            self.use_real_data = False
     
     def get_stocks_by_time_slot(self, time_slot: str, date: str = None) -> List[Dict[str, Any]]:
-        """根據時段獲取股票數據"""
-        cache_key = f"{time_slot}_{date or datetime.now().strftime('%Y%m%d')}"
+        """根據時段獲取股票數據（統一入口）"""
+        if date is None:
+            date = datetime.now().strftime('%Y%m%d')
         
+        cache_key = f"{time_slot}_{date}"
+        
+        # 檢查快取
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key]
+            cached_data = self.cache[cache_key]
+            log_event(f"使用快取數據: {len(cached_data)} 支股票")
+            return cached_data
         
-        # 生成模擬數據
+        # 優先使用真實數據
+        if self.use_real_data and self.real_fetcher:
+            try:
+                stocks = self.real_fetcher.get_stocks_by_time_slot(time_slot, date)
+                if stocks:
+                    log_event(f"✅ 獲取真實數據: {len(stocks)} 支股票", level='success')
+                    self.cache[cache_key] = stocks
+                    return stocks
+                else:
+                    log_event("⚠️ 真實數據為空，回退到模擬數據", level='warning')
+            except Exception as e:
+                log_event(f"⚠️ 真實數據獲取失敗: {e}，回退到模擬數據", level='warning')
+        
+        # 回退到模擬數據
+        log_event("📊 使用模擬數據", level='info')
         stocks = self._generate_mock_stocks(time_slot)
         self.cache[cache_key] = stocks
         
         return stocks
     
     def _generate_mock_stocks(self, time_slot: str) -> List[Dict[str, Any]]:
-        """生成模擬股票數據"""
+        """生成改進的模擬股票數據（保持作為備用方案）"""
         import random
         
-        # 股票池
-        stock_pool = [
-            ('2330', '台積電'), ('2317', '鴻海'), ('2454', '聯發科'),
-            ('2881', '富邦金'), ('2882', '國泰金'), ('2609', '陽明'),
-            ('2603', '長榮'), ('2615', '萬海'), ('1301', '台塑'),
-            ('1303', '南亞'), ('2002', '中鋼'), ('2412', '中華電'),
-            ('2368', '金像電'), ('3008', '大立光'), ('2408', '南亞科'),
-            ('6505', '台塑化'), ('2891', '中信金'), ('5880', '合庫金'),
-            ('2886', '兆豐金'), ('2892', '第一金')
-        ]
+        # 擴展的股票池，更真實的分類
+        stock_pool = {
+            'tech': [
+                ('2330', '台積電'), ('2317', '鴻海'), ('2454', '聯發科'),
+                ('3008', '大立光'), ('2408', '南亞科'), ('2368', '金像電'),
+                ('3034', '聯詠'), ('2382', '廣達'), ('2379', '瑞昱'),
+                ('6505', '台塑化'), ('3711', '日月光投控'), ('2347', '聯強')
+            ],
+            'finance': [
+                ('2881', '富邦金'), ('2882', '國泰金'), ('2886', '兆豐金'),
+                ('2891', '中信金'), ('2892', '第一金'), ('5880', '合庫金'),
+                ('2834', '臺企銀'), ('2887', '台新金'), ('2888', '新光金')
+            ],
+            'traditional': [
+                ('1301', '台塑'), ('1303', '南亞'), ('2002', '中鋼'),
+                ('1326', '台化'), ('1216', '統一'), ('2912', '統一超'),
+                ('2412', '中華電'), ('3045', '台灣大'), ('4904', '遠傳')
+            ],
+            'shipping': [
+                ('2609', '陽明'), ('2603', '長榮'), ('2615', '萬海'),
+                ('5608', '四維航'), ('2634', '漢翔')
+            ]
+        }
+        
+        # 展開所有股票
+        all_stocks = []
+        for category, stocks in stock_pool.items():
+            all_stocks.extend([(code, name, category) for code, name in stocks])
         
         # 根據時段決定股票數量
         slot_counts = {
@@ -300,30 +365,76 @@ class DataFetcher:
         }
         
         count = slot_counts.get(time_slot, 100)
-        selected_stocks = random.sample(stock_pool, min(count, len(stock_pool)))
         
-        # 如果需要更多股票，重複選擇
+        # 確保有足夠的股票（重複選擇如果需要）
+        selected_stocks = []
         while len(selected_stocks) < count:
-            selected_stocks.extend(random.sample(stock_pool, min(count - len(selected_stocks), len(stock_pool))))
+            remaining = count - len(selected_stocks)
+            batch = random.sample(all_stocks, min(remaining, len(all_stocks)))
+            selected_stocks.extend(batch)
         
         stocks = []
-        for code, name in selected_stocks[:count]:
-            # 生成隨機價格數據
-            base_price = random.uniform(20, 800)
-            change_pct = random.uniform(-8, 8)
+        for i, (code, name, category) in enumerate(selected_stocks[:count]):
+            # 根據股票類別設定不同的價格特徵
+            if category == 'tech':
+                base_price = random.uniform(100, 800)
+                volatility = 0.08
+            elif category == 'finance':
+                base_price = random.uniform(15, 80)
+                volatility = 0.05
+            elif category == 'shipping':
+                base_price = random.uniform(30, 200)
+                volatility = 0.12
+            else:
+                base_price = random.uniform(20, 150)
+                volatility = 0.06
+            
+            # 生成更真實的價格變動
+            change_pct = random.normalvariate(0, volatility * 100)
+            change_pct = max(-10, min(10, change_pct))  # 限制在±10%
+            
+            # 根據變動生成合理的價格
+            close_price = round(base_price, 1)
+            open_price = round(base_price * (1 - change_pct/200), 1)
+            high_price = round(max(open_price, close_price) * random.uniform(1.0, 1.03), 1)
+            low_price = round(min(open_price, close_price) * random.uniform(0.97, 1.0), 1)
+            
+            # 生成成交量（活躍度不同）
+            if abs(change_pct) > 5:
+                base_volume = random.randint(50000, 500000)  # 大波動高成交量
+            elif abs(change_pct) > 2:
+                base_volume = random.randint(20000, 200000)  # 中波動中成交量
+            else:
+                base_volume = random.randint(5000, 100000)   # 小波動低成交量
+            
+            trade_value = int(close_price * base_volume)
+            
+            # 添加法人數據模擬
+            foreign_net = random.randint(-50000, 100000)
+            trust_net = random.randint(-30000, 50000)
+            dealer_net = random.randint(-20000, 30000)
             
             stock = {
                 'code': code,
                 'name': name,
-                'close': round(base_price, 1),
+                'close': close_price,
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
                 'change_percent': round(change_pct, 2),
-                'volume': random.randint(1000, 500000),
-                'trade_value': random.randint(10000000, 20000000000),
-                'high': round(base_price * random.uniform(1.0, 1.05), 1),
-                'low': round(base_price * random.uniform(0.95, 1.0), 1),
-                'open': round(base_price * random.uniform(0.98, 1.02), 1)
+                'volume': base_volume,
+                'trade_value': trade_value,
+                'foreign_net_buy': foreign_net,
+                'trust_net_buy': trust_net,
+                'dealer_net_buy': dealer_net,
+                'total_net_buy': foreign_net + trust_net + dealer_net,
+                'category': category,
+                'data_source': 'mock'
             }
             stocks.append(stock)
+        
+        # 按成交金額排序
+        stocks.sort(key=lambda x: x.get('trade_value', 0), reverse=True)
         
         return stocks
     
@@ -332,8 +443,14 @@ class DataFetcher:
         if cache_key not in self.cache:
             return False
         
-        # 簡單的時間檢查（實際應用中會更複雜）
-        return True  # 簡化實作
+        # 檢查時間戳（如果有的話）
+        cache_data = self.cache[cache_key]
+        if isinstance(cache_data, dict) and 'timestamp' in cache_data:
+            cache_time = datetime.fromisoformat(cache_data['timestamp'])
+            if (datetime.now() - cache_time).total_seconds() > self.cache_expire_minutes * 60:
+                return False
+        
+        return True
 
 # ============================================================================
 # 股票分析器類別
@@ -374,6 +491,9 @@ class StockAnalyzer:
     def analyze_stock(self, stock_info: Dict[str, Any], analysis_focus: str = 'mixed') -> Dict[str, Any]:
         """統一股票分析入口"""
         try:
+            # 保存當前股票信息以供子函數使用
+            self._current_stock_info = stock_info
+            
             # 基礎分析
             base_analysis = self._get_base_analysis(stock_info)
             
@@ -395,14 +515,31 @@ class StockAnalyzer:
                     analysis_focus
                 )
                 
+                # 添加數據來源信息
+                final_analysis['data_sources'] = {
+                    'market_data': stock_info.get('data_source', stock_info.get('source', 'unknown')),
+                    'fundamental': fundamental_analysis.get('data_source', 'unknown'),
+                    'institutional': institutional_analysis.get('data_source', 'unknown')
+                }
+                
                 return final_analysis
             else:
                 # 基礎模式
-                return self._finalize_basic_analysis(base_analysis)
+                result = self._finalize_basic_analysis(base_analysis)
+                result['data_sources'] = {
+                    'market_data': stock_info.get('data_source', stock_info.get('source', 'unknown'))
+                }
+                return result
                 
         except Exception as e:
             log_event(f"分析股票 {stock_info['code']} 失敗: {e}", level='warning')
-            return self._get_fallback_analysis(stock_info)
+            fallback = self._get_fallback_analysis(stock_info)
+            fallback['data_sources'] = {'market_data': 'error'}
+            return fallback
+        finally:
+            # 清理臨時變量
+            if hasattr(self, '_current_stock_info'):
+                delattr(self, '_current_stock_info')
     
     def _get_base_analysis(self, stock_info: Dict[str, Any]) -> Dict[str, Any]:
         """基礎分析"""
@@ -520,9 +657,34 @@ class StockAnalyzer:
             return {'available': False}
     
     def _get_fundamental_analysis(self, stock_code: str) -> Dict[str, Any]:
-        """基本面分析"""
+        """基本面分析 - 支援真實和模擬數據"""
         try:
-            # 模擬基本面數據（實際應用中從財報API獲取）
+            # 如果數據獲取器有真實的基本面數據，優先使用
+            if (hasattr(self, 'data_fetcher') and 
+                hasattr(self.data_fetcher, 'real_fetcher') and 
+                self.data_fetcher.real_fetcher and 
+                hasattr(self.data_fetcher.real_fetcher, 'get_financial_data')):
+                
+                try:
+                    financial_data = self.data_fetcher.real_fetcher.get_financial_data([stock_code])
+                    if stock_code in financial_data:
+                        real_data = financial_data[stock_code]
+                        
+                        # 使用真實數據進行基本面評分
+                        fund_score = self._calculate_fundamental_score(real_data)
+                        
+                        result = {
+                            'available': True,
+                            'fund_score': round(fund_score, 1),
+                            'data_source': 'real'
+                        }
+                        result.update(real_data)
+                        return result
+                        
+                except Exception as e:
+                    log_event(f"獲取真實基本面數據失敗: {e}", level='warning')
+            
+            # 回退到模擬數據
             import random
             random.seed(hash(stock_code) % 1000)  # 確保同一股票數據一致
             
@@ -533,58 +695,16 @@ class StockAnalyzer:
             roe = round(random.uniform(3.0, 30.0), 1)
             revenue_growth = round(random.uniform(-8.0, 25.0), 1)
             
+            mock_data = {
+                'dividend_yield': dividend_yield,
+                'eps_growth': eps_growth,
+                'pe_ratio': pe_ratio,
+                'roe': roe,
+                'revenue_growth': revenue_growth
+            }
+            
             # 基本面評分
-            fund_score = 0
-            
-            # 殖利率評分
-            if dividend_yield > 6:
-                fund_score += 4.0
-            elif dividend_yield > 4:
-                fund_score += 3.0
-            elif dividend_yield > 2.5:
-                fund_score += 2.0
-            elif dividend_yield > 1:
-                fund_score += 1.0
-            
-            # EPS成長評分
-            if eps_growth > 30:
-                fund_score += 4.0
-            elif eps_growth > 20:
-                fund_score += 3.5
-            elif eps_growth > 10:
-                fund_score += 3.0
-            elif eps_growth > 5:
-                fund_score += 2.0
-            elif eps_growth > 0:
-                fund_score += 1.0
-            elif eps_growth < -10:
-                fund_score -= 3.0
-            elif eps_growth < 0:
-                fund_score -= 1.5
-            
-            # PE比率評分
-            if pe_ratio < 8:
-                fund_score += 2.5
-            elif pe_ratio < 12:
-                fund_score += 2.0
-            elif pe_ratio < 18:
-                fund_score += 1.5
-            elif pe_ratio < 25:
-                fund_score += 0.5
-            elif pe_ratio > 35:
-                fund_score -= 2.0
-            
-            # ROE評分
-            if roe > 25:
-                fund_score += 3.0
-            elif roe > 20:
-                fund_score += 2.5
-            elif roe > 15:
-                fund_score += 2.0
-            elif roe > 10:
-                fund_score += 1.0
-            elif roe < 5:
-                fund_score -= 1.5
+            fund_score = self._calculate_fundamental_score(mock_data)
             
             return {
                 'available': True,
@@ -593,16 +713,118 @@ class StockAnalyzer:
                 'eps_growth': eps_growth,
                 'pe_ratio': pe_ratio,
                 'roe': roe,
-                'revenue_growth': revenue_growth
+                'revenue_growth': revenue_growth,
+                'data_source': 'mock'
             }
             
         except Exception as e:
             log_event(f"基本面分析失敗: {e}", level='warning')
             return {'available': False}
     
+    def _calculate_fundamental_score(self, data: Dict[str, Any]) -> float:
+        """計算基本面評分"""
+        fund_score = 0
+        
+        # 殖利率評分
+        dividend_yield = data.get('dividend_yield', 0)
+        if dividend_yield > 6:
+            fund_score += 4.0
+        elif dividend_yield > 4:
+            fund_score += 3.0
+        elif dividend_yield > 2.5:
+            fund_score += 2.0
+        elif dividend_yield > 1:
+            fund_score += 1.0
+        
+        # EPS成長評分
+        eps_growth = data.get('eps_growth', 0)
+        if eps_growth > 30:
+            fund_score += 4.0
+        elif eps_growth > 20:
+            fund_score += 3.5
+        elif eps_growth > 10:
+            fund_score += 3.0
+        elif eps_growth > 5:
+            fund_score += 2.0
+        elif eps_growth > 0:
+            fund_score += 1.0
+        elif eps_growth < -10:
+            fund_score -= 3.0
+        elif eps_growth < 0:
+            fund_score -= 1.5
+        
+        # PE比率評分
+        pe_ratio = data.get('pe_ratio', 999)
+        if pe_ratio < 8:
+            fund_score += 2.5
+        elif pe_ratio < 12:
+            fund_score += 2.0
+        elif pe_ratio < 18:
+            fund_score += 1.5
+        elif pe_ratio < 25:
+            fund_score += 0.5
+        elif pe_ratio > 35:
+            fund_score -= 2.0
+        
+        # ROE評分
+        roe = data.get('roe', 0)
+        if roe > 25:
+            fund_score += 3.0
+        elif roe > 20:
+            fund_score += 2.5
+        elif roe > 15:
+            fund_score += 2.0
+        elif roe > 10:
+            fund_score += 1.0
+        elif roe < 5:
+            fund_score -= 1.5
+        
+        # 營收成長評分
+        revenue_growth = data.get('revenue_growth', 0)
+        if revenue_growth > 20:
+            fund_score += 2.0
+        elif revenue_growth > 10:
+            fund_score += 1.5
+        elif revenue_growth > 5:
+            fund_score += 1.0
+        elif revenue_growth < -10:
+            fund_score -= 2.0
+        elif revenue_growth < 0:
+            fund_score -= 1.0
+        
+        return fund_score
+    
     def _get_institutional_analysis(self, stock_code: str) -> Dict[str, Any]:
-        """法人買賣分析"""
+        """法人買賣分析 - 支援真實和模擬數據"""
         try:
+            # 檢查股票信息中是否已包含法人數據（來自真實數據）
+            if hasattr(self, '_current_stock_info') and self._current_stock_info:
+                stock_info = self._current_stock_info
+                
+                if ('foreign_net_buy' in stock_info and 
+                    'trust_net_buy' in stock_info and 
+                    'dealer_net_buy' in stock_info):
+                    
+                    # 使用真實法人數據
+                    foreign_net = stock_info.get('foreign_net_buy', 0)
+                    trust_net = stock_info.get('trust_net_buy', 0)
+                    dealer_net = stock_info.get('dealer_net_buy', 0)
+                    total_net = stock_info.get('total_net_buy', foreign_net + trust_net + dealer_net)
+                    
+                    # 計算法人評分
+                    inst_score = self._calculate_institutional_score(foreign_net, trust_net, dealer_net)
+                    
+                    return {
+                        'available': True,
+                        'inst_score': round(inst_score, 1),
+                        'foreign_net_buy': foreign_net,
+                        'trust_net_buy': trust_net,
+                        'dealer_net_buy': dealer_net,
+                        'total_institutional': total_net,
+                        'data_source': 'real'
+                    }
+            
+            # 回退到模擬數據
             import random
             random.seed(hash(stock_code) % 1000)
             
@@ -620,48 +842,8 @@ class StockAnalyzer:
                 trust_net = random.randint(-20000, 30000)
                 dealer_net = random.randint(-10000, 15000)
             
-            # 法人評分
-            inst_score = 0
-            
-            # 外資評分
-            if foreign_net > 100000:
-                inst_score += 5.0
-            elif foreign_net > 50000:
-                inst_score += 4.0
-            elif foreign_net > 20000:
-                inst_score += 3.0
-            elif foreign_net > 10000:
-                inst_score += 2.5
-            elif foreign_net > 5000:
-                inst_score += 2.0
-            elif foreign_net > 0:
-                inst_score += 1.0
-            elif foreign_net < -100000:
-                inst_score -= 5.0
-            elif foreign_net < -50000:
-                inst_score -= 4.0
-            elif foreign_net < -20000:
-                inst_score -= 3.0
-            elif foreign_net < 0:
-                inst_score -= 1.0
-            
-            # 投信評分
-            if trust_net > 50000:
-                inst_score += 3.5
-            elif trust_net > 20000:
-                inst_score += 3.0
-            elif trust_net > 10000:
-                inst_score += 2.5
-            elif trust_net > 5000:
-                inst_score += 2.0
-            elif trust_net > 0:
-                inst_score += 1.0
-            elif trust_net < -50000:
-                inst_score -= 3.5
-            elif trust_net < -20000:
-                inst_score -= 3.0
-            elif trust_net < 0:
-                inst_score -= 1.0
+            # 計算法人評分
+            inst_score = self._calculate_institutional_score(foreign_net, trust_net, dealer_net)
             
             return {
                 'available': True,
@@ -669,12 +851,88 @@ class StockAnalyzer:
                 'foreign_net_buy': foreign_net,
                 'trust_net_buy': trust_net,
                 'dealer_net_buy': dealer_net,
-                'total_institutional': foreign_net + trust_net + dealer_net
+                'total_institutional': foreign_net + trust_net + dealer_net,
+                'data_source': 'mock'
             }
             
         except Exception as e:
             log_event(f"法人分析失敗: {e}", level='warning')
             return {'available': False}
+    
+    def _calculate_institutional_score(self, foreign_net: int, trust_net: int, dealer_net: int) -> float:
+        """計算法人評分"""
+        inst_score = 0
+        
+        # 外資評分（單位：千股，已轉換為股數）
+        if foreign_net > 100000:
+            inst_score += 5.0
+        elif foreign_net > 50000:
+            inst_score += 4.0
+        elif foreign_net > 20000:
+            inst_score += 3.0
+        elif foreign_net > 10000:
+            inst_score += 2.5
+        elif foreign_net > 5000:
+            inst_score += 2.0
+        elif foreign_net > 0:
+            inst_score += 1.0
+        elif foreign_net < -100000:
+            inst_score -= 5.0
+        elif foreign_net < -50000:
+            inst_score -= 4.0
+        elif foreign_net < -20000:
+            inst_score -= 3.0
+        elif foreign_net < 0:
+            inst_score -= 1.0
+        
+        # 投信評分
+        if trust_net > 50000:
+            inst_score += 3.5
+        elif trust_net > 20000:
+            inst_score += 3.0
+        elif trust_net > 10000:
+            inst_score += 2.5
+        elif trust_net > 5000:
+            inst_score += 2.0
+        elif trust_net > 0:
+            inst_score += 1.0
+        elif trust_net < -50000:
+            inst_score -= 3.5
+        elif trust_net < -20000:
+            inst_score -= 3.0
+        elif trust_net < 0:
+            inst_score -= 1.0
+        
+        # 自營商評分
+        if dealer_net > 20000:
+            inst_score += 2.0
+        elif dealer_net > 10000:
+            inst_score += 1.5
+        elif dealer_net > 5000:
+            inst_score += 1.0
+        elif dealer_net < -20000:
+            inst_score -= 2.0
+        elif dealer_net < -10000:
+            inst_score -= 1.5
+        elif dealer_net < -5000:
+            inst_score -= 1.0
+        
+        # 三大法人合計評分
+        total_institutional = foreign_net + trust_net + dealer_net
+        if total_institutional > 150000:
+            inst_score += 3.0
+        elif total_institutional > 100000:
+            inst_score += 2.0
+        elif total_institutional > 50000:
+            inst_score += 1.0
+        elif total_institutional < -150000:
+            inst_score -= 3.0
+        elif total_institutional < -100000:
+            inst_score -= 2.0
+        elif total_institutional < -50000:
+            inst_score -= 1.0
+        
+        return inst_score
     
     def _combine_analysis(self, base_analysis: Dict, technical_analysis: Dict,
                          fundamental_analysis: Dict, institutional_analysis: Dict,
