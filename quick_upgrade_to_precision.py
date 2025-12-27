@@ -1,4 +1,4 @@
- """
+"""
 quick_upgrade_to_precision.py - 快速升級到精準分析系統
 一鍵升級現有系統到精準版本
 """
