@@ -1642,6 +1642,96 @@ class ComprehensiveStockAnalyzer:
             logger.error(f"導出分析結果失敗: {e}")
             return False
 
+    def analyze_with_ml_enhancement(self,
+                                    stock_data: Dict[str, Any],
+                                    analysis_type: str = 'mixed') -> Dict[str, Any]:
+        """
+        使用 ML 增強版進行股票分析
+
+        這個方法整合了新的機器學習預測系統，提供更精準的分析結果
+
+        參數:
+        - stock_data: 股票數據
+        - analysis_type: 分析類型 ('short_term', 'long_term', 'mixed')
+
+        返回:
+        - 包含 ML 預測的增強分析結果
+        """
+        try:
+            # 嘗試導入 ML 預測整合器
+            from prediction_integrator import PredictionIntegrator
+
+            integrator = PredictionIntegrator(enable_ml=True)
+
+            # 先執行傳統分析
+            traditional_result = self.analyze_stock_comprehensive(
+                stock_data,
+                analysis_type,
+                precision_mode=True
+            )
+
+            # 執行 ML 增強分析
+            ml_result = integrator.enhance_stock_analysis(
+                stock_data,
+                traditional_result,
+                analysis_type
+            )
+
+            # 合併結果
+            combined_result = {
+                'stock_info': traditional_result.get('stock_info', {}),
+                'traditional_analysis': traditional_result,
+                'ml_enhanced': ml_result,
+                'final_score': ml_result.get('combined_score', 50),
+                'precision_grade': ml_result.get('precision_grade', 'N/A'),
+                'recommendation': ml_result.get('action_recommendation', {}),
+                'reasoning': ml_result.get('enhanced_reasoning', []),
+                'target_price': ml_result.get('target_price', {}),
+                'market_sentiment': ml_result.get('market_sentiment', {}),
+                'analysis_type': analysis_type,
+                'timestamp': datetime.now().isoformat()
+            }
+
+            logger.info(f"ML 增強分析完成: {stock_data.get('code')} - 評分: {combined_result['final_score']}")
+            return combined_result
+
+        except ImportError as e:
+            logger.warning(f"ML 預測模組未安裝，使用傳統分析: {e}")
+            return self.analyze_stock_comprehensive(stock_data, analysis_type, precision_mode=True)
+        except Exception as e:
+            logger.error(f"ML 增強分析失敗: {e}")
+            return self.analyze_stock_comprehensive(stock_data, analysis_type, precision_mode=True)
+
+    def batch_analyze_with_ml(self,
+                             stocks: List[Dict[str, Any]],
+                             analysis_type: str = 'mixed',
+                             top_n: int = 10) -> List[Dict[str, Any]]:
+        """
+        批量執行 ML 增強分析
+
+        參數:
+        - stocks: 股票列表
+        - analysis_type: 分析類型
+        - top_n: 返回前N名
+
+        返回:
+        - 按評分排序的分析結果列表
+        """
+        results = []
+
+        for stock in stocks:
+            try:
+                result = self.analyze_with_ml_enhancement(stock, analysis_type)
+                results.append(result)
+            except Exception as e:
+                logger.warning(f"分析失敗: {stock.get('code')} - {e}")
+                continue
+
+        # 按最終評分排序
+        results.sort(key=lambda x: x.get('final_score', 0), reverse=True)
+
+        return results[:top_n]
+
 # ==================== 使用範例 ====================
 
 def demo_comprehensive_analysis():
