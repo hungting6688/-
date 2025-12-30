@@ -45,12 +45,25 @@ psutil>=5.9.0
 pytest>=7.3.0
 pytest-mock>=3.10.0
 
-# 注意：以下套件被移除因為它們會導致安裝問題：
+# ==================== ML 增強版依賴 ====================
+
+# 機器學習核心
+scikit-learn>=1.3.0
+
+# XGBoost (可選 - 更精準的預測)
+# xgboost>=2.0.0
+
+# LightGBM (可選 - 更快的訓練速度)
+# lightgbm>=4.0.0
+
+# 注意：XGBoost 和 LightGBM 在 GitHub Actions 上可能需要較長安裝時間
+# 如需啟用，請取消上方註解
+
+# ==================== 注意事項 ====================
+# 以下套件被移除因為它們會導致安裝問題：
 # - sqlite3 (Python內建模組)
 # - asyncio (Python內建模組)
 # - pathlib2 (Python 3.4+內建pathlib)
 # - colorlog (非必須)
 # - jsonschema (非必須)
 # - aiohttp (非必須，且有版本衝突)
-# - 所有機器學習相關套件 (非核心功能)
-# - 所有雲端服務套件 (非核心功能)
